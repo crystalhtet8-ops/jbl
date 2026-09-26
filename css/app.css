@@ -1,4 +1,6 @@
-/* Combined core CSS tokens and primary layout (keeps original theme tokens) */
+/* Combined original app.css merged with brand helpers to match current index.html
+   Restores theme tokens, layout, and interactive styles to fix white-theme and unclickable UI issues.
+*/
 
 /* Base tokens */
 *{box-sizing:border-box}
@@ -20,7 +22,7 @@ body.dark{
   --grid:#111827;
   --soft:#111827;
 }
-body{background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,'Segoe UI',Roboto,'Helvetica Neue',Arial;font-size:15px;line-height:1.3}
+body{margin:0;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,'Segoe UI',Roboto,'Helvetica Neue',Arial;font-size:15px;line-height:1.3;transition:.25s}
 
 /* Panels, cards */
 .panel{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px;box-shadow:0 1px 0 rgba(0,0,0,0.02)}
@@ -28,11 +30,18 @@ body{background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,
 .muted{color:var(--muted)}
 
 /* Header & nav */
-header{display:flex;align-items:center;gap:14px;padding:12px 18px}
+header{display:flex;align-items:center;gap:14px;padding:12px 18px;background:var(--card);border-bottom:1px solid var(--line);position:sticky;top:0;z-index:5}
 .logo img{width:40px;height:40px;border-radius:8px}
 nav{display:flex;gap:8px;margin-left:auto}
 nav button{background:transparent;border:1px solid transparent;padding:8px 10px;border-radius:10px;cursor:pointer}
 nav button.active{background:var(--soft);border-color:var(--line)}
+
+/* Support .brand (index.html uses .brand) */
+.brand{display:flex;gap:10px;align-items:center}
+.brand>b{background:linear-gradient(135deg,#111827,#4f46e5);color:#fff;border-radius:13px;padding:8px 10px;display:inline-flex;align-items:center;justify-content:center}
+.brand img{width:36px;height:36px;border-radius:10px;display:block}
+.brand span>*{display:block}
+.brand small{color:var(--muted);font-size:10px}
 
 /* Forms & fields */
 .field{margin-bottom:10px}
@@ -62,6 +71,7 @@ button#cancelAdd{background:transparent;border:1px solid var(--line);padding:10p
 
 /* Toast */
 #toast{position:fixed;right:16px;bottom:16px;padding:10px;border-radius:8px;background:var(--card);border:1px solid var(--line);display:none}
+#toast.on{display:block}
 
 /* Accessibility focus state */
 :focus{outline:none}
@@ -69,3 +79,44 @@ button#cancelAdd{background:transparent;border:1px solid var(--line);padding:10p
 
 /* Minor helpers for rows */
 .row{display:flex;align-items:center;justify-content:space-between;gap:10px}
+
+/* Core layout & components (restored from current runtime expectations) */
+.app{max-width:900px;margin:auto;padding-bottom:80px}
+.hero{display:flex;justify-content:space-between;gap:15px;align-items:end}
+.hero input{width:145px}
+.focus,.panel,.stats article{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:15px;margin:12px 0;box-shadow:0 7px 22px #00000008}
+.focus{display:flex;gap:12px;align-items:center;background:linear-gradient(135deg,var(--card),var(--soft))}
+.focus i{background:#6366f1;color:#fff;padding:10px;border-radius:12px}
+.balance{background:linear-gradient(135deg,#0b1020,#273a61);color:#fff;border-radius:22px;padding:20px}
+.balance>div{display:flex;justify-content:space-between}
+.balance strong{display:block;font-size:34px;margin:9px 0}
+.stats,.bi{display:grid;grid-template-columns:repeat(2,1fr);gap:9px;margin:12px 0}
+.actions{display:grid;grid-template-columns:1fr 1fr;gap:9px}
+.actions button{background:var(--card);border:1px solid var(--line);border-radius:16px;text-align:left;padding:13px;min-height:88px;transition:.18s}
+.actions button:hover{transform:translateY(-2px)}
+.actions button>b,.actions button>small{display:block}
+.tabs{display:grid;grid-template-columns:repeat(4,1fr);background:var(--line);padding:4px;border-radius:12px;margin:12px 0}
+.tabs button{padding:10px;border-radius:9px;font-weight:800}
+.tabs button.active{background:var(--card)}
+label{display:block;font-size:11px;font-weight:800;margin:9px 0}
+.amount{display:flex;align-items:center;border:1px solid var(--line);border-radius:12px;padding-left:10px}
+.amount input{border:0;font-size:28px}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+input,select{width:100%;min-height:44px;border:1px solid var(--line);border-radius:12px;background:var(--card);color:var(--text);padding:9px;font-size:16px}
+.primary{background:linear-gradient(135deg,#111827,#4f46e5);color:#fff;border-radius:12px;padding:13px 18px;font-weight:850;margin-top:10px}
+.sync{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-top:10px}
+.sync button,.panel>button{background:var(--soft);padding:11px;border-radius:11px;font-weight:800}
+.switch{width:48px;height:28px;background:#cbd5e1;border-radius:20px;padding:3px}
+.switch i{display:block;width:22px;height:22px;background:#fff;border-radius:50%;transition:.2s}
+.switch.on{background:#6366f1}
+.switch.on i{transform:translateX(20px)}
+.cat{display:flex;gap:8px;align-items:center;padding:8px 0;border-bottom:1px solid var(--line)}
+.cat span{flex:1}
+.table{overflow:auto}table{width:100%;border-collapse:collapse;font-size:11px}td,th{padding:8px;border-bottom:1px solid var(--line);text-align:left}
+
+/* action-buttons helper used by JS alignment */
+.action-buttons{display:flex;gap:10px;align-items:center}
+.action-buttons button{min-width:120px}
+
+/* small responsive tweaks */
+@media (max-width:600px){.hero{flex-direction:column;align-items:flex-start}.stats,.bi{grid-template-columns:1fr}.loan-bi-grid{grid-template-columns:1fr}}
