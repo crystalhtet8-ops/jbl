@@ -1,14 +1,17 @@
-/* MoneyFlow UI polish adjustments: update quick action pills and missing settings fields positioning */
+/* Non-invasive polish (quick-action pills, header stat spacing, loan BI, responsive tweaks)
+   This file intentionally overrides minimally and should be loaded after css/app.css.
+*/
 
-/* Increase pill radius, soften elevation, make hover/active subtle */
+/* Quick-action pill tuning: rounded, softer elevation, subtle hover/active */
 .actions button,
 .action-buttons button,
 .quick-actions button {
-  border-radius: 18px; /* increased from 14 */
+  border-radius: 18px; /* rounder pill */
   padding: 10px 14px;
-  box-shadow: 0 8px 20px rgba(16,24,40,0.06); /* slightly stronger but soft */
+  box-shadow: 0 8px 20px rgba(16,24,40,0.06);
   background: linear-gradient(180deg, rgba(255,255,255,0.015), rgba(0,0,0,0.02));
   border: 1px solid rgba(0,0,0,0.06);
+  transition: transform .12s ease, box-shadow .12s ease, background .12s ease;
 }
 
 .actions button:hover,
@@ -25,7 +28,7 @@
   box-shadow: 0 6px 16px rgba(16,24,40,0.06);
 }
 
-/* Make quick actions compact and aligned */
+/* Compact and aligned quick actions */
 .quick-actions {
   display: flex;
   gap: 8px;
@@ -42,7 +45,7 @@
   justify-content: center;
 }
 
-/* Ensure labels under icon buttons are centered in narrow view */
+/* Small label under icons */
 .quick-actions .label {
   display: block;
   text-align: center;
@@ -50,32 +53,39 @@
   margin-top: 4px;
 }
 
-/* Place Daily Budget into header stat area near Income/Expense/Loan */
+/* Header stats layout */
 .header-stats {
-  display: flex;
-  gap: 12px;
-  align-items: center;
+  display:flex;
+  gap:12px;
+  align-items:center;
+  flex-wrap:wrap;
 }
 
 .header-stat {
-  min-width: 0;
-  padding: 6px 10px;
-  border-radius: 10px;
-  background: var(--card);
-  border: 1px solid var(--line);
+  min-width:0;
+  padding:8px 12px;
+  border-radius:10px;
+  background:var(--card);
+  border:1px solid var(--line);
+  text-align:center;
 }
 
-/* keep it responsive */
+/* responsive */
 @media (max-width:700px){
   .header-stats{flex-wrap:wrap}
   .quick-actions{justify-content:center}
 }
 
-/* dark mode variants */
+/* dark-mode subtle variants */
 body.dark .actions button,
 body.dark .action-buttons button,
 body.dark .quick-actions button {
   background: linear-gradient(180deg, rgba(255,255,255,0.01), rgba(255,255,255,0.01));
   box-shadow: 0 8px 22px rgba(0,0,0,0.22);
   border-color: rgba(255,255,255,0.06);
+}
+
+/* Accessible reduced motion */
+@media (prefers-reduced-motion:reduce){
+  *,*::before,*::after{transition:none!important;animation:none!important}
 }
