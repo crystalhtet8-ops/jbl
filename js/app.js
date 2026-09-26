@@ -85,7 +85,18 @@
         state.settings.lastSynced = new Date().toISOString(); save(); render(); }
     }catch(e){console.warn('pull failed',e);} finally{syncing=false;} }
 
-  document.addEventListener('click',e=>{const p=e.target.closest('[data-page]');if(p)return show(p.dataset.page);const a=e.target.closest('[data-add]');if(a){setType(a.dataset.add);show('add');return}const tab=e.target.closest('[data-type]');if(tab){setType(tab.dataset.type);return}});
+  function closestSafe(e, selector){
+    let t = e && e.target;
+    if(!t) return null;
+    if(t.nodeType === 3) t = t.parentElement; // text node
+    return (t && typeof t.closest === 'function') ? t.closest(selector) : null;
+  }
+
+  document.addEventListener('click',e=>{
+    const p = closestSafe(e,'[data-page]'); if(p) { show(p.dataset.page); return; }
+    const a = closestSafe(e,'[data-add]'); if(a) { setType(a.dataset.add); show('add'); return; }
+    const tab = closestSafe(e,'[data-type]'); if(tab) { setType(tab.dataset.type); return; }
+  });
 
   // Form submit handler - enhanced to support loan recording and repayment selection; ensures exit add form and immediate sync
   const formEl = $('form');
