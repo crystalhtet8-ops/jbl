@@ -13,8 +13,8 @@
   <div class="app">
     <header>
       <div class="brand">
-        <!-- top-left app icon: use the supplied small icon; kept inline so visuals remain identical -->
-        <b><img id="appIcon" src="icons/icon-192.png" alt="MoneyFlow" style="width:28px;height:28px;display:inline-block;vertical-align:middle"></b>
+        <!-- top-left app icon: slightly larger while remaining in the top-left corner -->
+        <b><img id="appIcon" src="icons/icon-192.png" alt="MoneyFlow" style="width:36px;height:36px;display:inline-block;vertical-align:middle;border-radius:10px;"></b>
         <span>
           <strong>MoneyFlow</strong>
           <small>Personal Finance • BI</small>
@@ -99,11 +99,11 @@
             <h2>Recent activity</h2>
             <button data-page="transactions">See all</button>
           </div>
-          <div id="recentList" class="list"></div>
+          <div id="recentList"></div>
         </div>
       </section>
 
-      <!-- ADD / FORM -->
+      <!-- ADD -->
       <section id="add" class="page">
         <button data-page="home">←</button>
         <small>TRANSACTION</small>
@@ -112,45 +112,25 @@
         <div class="tabs">
           <button data-type="expense">Expense</button>
           <button data-type="income">Income</button>
-          <button data-type="loan">Loan</button>
-          <!-- label changed from "Credit" to "Loan Repayment" (data-type left as 'credit' for compatibility) -->
+          <button data-type="loan">Record Loan</button>
           <button data-type="credit">Loan Repayment</button>
         </div>
 
-        <form id="form" class="panel">
+        <form id="form">
           <label>Amount
-            <div class="amount">
-              <span>MMK</span>
-              <input id="amount" type="number" min="0" required>
-            </div>
+            <input id="amount" type="number" min="1" step="0.01" placeholder="0">
           </label>
-
-          <div class="two">
-            <label>Date
-              <input id="date" type="date" required>
-            </label>
-            <label>Category
-              <select id="category">
-                <option value="general">General</option>
-                <option value="food">Food</option>
-                <option value="transport">Transport</option>
-                <option value="loan">Loan</option>
-                <option value="loan repayment">Loan Repayment</option>
-              </select>
-            </label>
-          </div>
-
+          <label>Category
+            <select id="category"></select>
+          </label>
+          <label>Date
+            <input id="date" type="date">
+          </label>
           <label>Note
-            <input id="note" type="text" placeholder="What was this for?">
+            <input id="note" type="text" placeholder="Optional note">
           </label>
-
-          <!-- placeholder for loan repayment select injected by js/loan-logic.js -->
-          <div id="loanSelectHolder" class="field" style="display:none;"></div>
-
-          <div class="actions-row">
-            <button type="submit" class="primary">Save transaction</button>
-            <button type="button" id="saveDraft" class="ghost">Save draft</button>
-          </div>
+          <div id="loanSelectHolder" style="display:none"></div>
+          <button type="submit" class="primary">Save</button>
         </form>
       </section>
 
@@ -159,21 +139,12 @@
         <button data-page="home">←</button>
         <small>HISTORY</small>
         <h1>Transactions</h1>
-
         <div class="panel">
           <div class="head">
             <h2 id="txCount">Activity</h2>
-            <button id="clear" class="danger">Clear all</button>
+            <button id="clearTx">Clear all</button>
           </div>
-
-          <div class="table-wrap">
-            <table class="tx-table">
-              <thead>
-                <tr><th>Date</th><th>Activity</th><th>Amount</th><th>Note</th></tr>
-              </thead>
-              <tbody id="rows"></tbody>
-            </table>
-          </div>
+          <div id="txList"></div>
         </div>
       </section>
 
@@ -186,18 +157,18 @@
         <div class="panel">
           <div class="head">
             <h2>Dark mode</h2>
-            <button id="switch" class="switch">Toggle</button>
+            <button id="switch" class="toggle">OFF</button>
           </div>
+        </div>
 
-          <div class="panel">
+        <div class="panel">
+          <div class="head">
             <h2>Sync</h2>
-            <p>Configure Google Sheets sync and export/import.</p>
-            <div>
-              <button id="exportJson">Export JSON</button>
-              <label class="file">Import JSON
-                <input id="import" type="file" accept=".json">
-              </label>
-            </div>
+            <button id="sync" class="ghost">Sync</button>
+          </div>
+          <div class="field">
+            <label>Apps Script URL</label>
+            <input id="syncUrl" type="url" placeholder="https://script.google.com/macros/s/...">
           </div>
         </div>
       </section>
@@ -212,30 +183,8 @@
     </nav>
   </div>
 
-  <!-- Main application script (existing app logic) -->
+  <div id="toast"></div>
   <script src="js/app.js"></script>
-
-  <!-- Loan logic module: it hooks into existing form/tab handlers and dashboard -->
   <script src="js/loan-logic.js"></script>
-
-  <!-- Small runtime safety script to ensure the brand icon uses the provided small icon -->
-  <script>
-    (function () {
-      try {
-        var iconPath = 'icons/icon-192.png';
-        // If there is an #appIcon image already, ensure it points to our icon
-        var img = document.getElementById('appIcon');
-        if (img) img.src = iconPath;
-        // If brand uses <b> glyph, replace with the image (keeps styling)
-        var brandB = document.querySelector('.brand > b');
-        if (brandB && brandB.querySelector('img') == null) {
-          brandB.innerHTML = '<img id="appIcon" src="' + iconPath + '" alt="MoneyFlow" style="width:28px;height:28px;display:inline-block;vertical-align:middle">';
-        }
-        // Ensure the manifest/icon is kept in sync by leaving manifest.webmanifest unchanged
-      } catch (e) {
-        // fail silently
-      }
-    })();
-  </script>
 </body>
 </html>
