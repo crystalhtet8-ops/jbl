@@ -67,4 +67,5 @@ button#cancelAdd{background:transparent;border:1px solid var(--line);padding:10p
 :focus{outline:none}
 :focus-visible{outline:3px solid rgba(99,102,241,0.2);outline-offset:2px}
 
-/* Polished quick-actions and header stat token - kept in ui-polish.css for non-invasive tweaks */
+/* Minor helpers for rows */
+.row{display:flex;align-items:center;justify-content:space-between;gap:10px}
