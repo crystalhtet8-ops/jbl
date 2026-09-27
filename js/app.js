@@ -3,7 +3,11 @@
 
   const KEY = 'moneyflow-v3';
   const $ = id => document.getElementById(id);
+  const q = sel => document.querySelector(sel);
   const today = new Date().toISOString().slice(0, 10);
+
+  const money = n => `${Math.round(Number(n) || 0).toLocaleString()} MMK`;
+  const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 
   const defaultCategories = [
     ['Food & Drinks', 'expense'],
@@ -13,1013 +17,518 @@
     ['Utilities', 'expense'],
     ['Shopping', 'expense'],
     ['Health', 'expense'],
-    ['Education', 'expense']
+    ['Education', 'expense'],
+    ['Salary', 'income'],
+    ['Loan', 'income']
   ];
 
   const fallback = {
     transactions: [],
-    loans: [],
     categories: defaultCategories.map(([name, type]) => ({ name, type })),
     budgets: [],
     goals: [],
-    settings: {
-      theme: 'light',
-      syncUrl: '',
-      syncRevision: '',
-      lastSynced: ''
-    },
-    reportMonth: today.slice(0, 7),
+    loans: [],
+    settings: { theme: 'light', syncUrl: '', syncRevision: '', lastSynced: '' },
+    reportMonth: today.slice(0,7),
     currentType: 'expense'
   };
 
-  let state = loadState();
-  let syncing = false;
-  let syncQueued = false;
-
-  normalizeState();
-
   function loadState() {
     try {
-      const saved = JSON.parse(localStorage.getItem(KEY) || '{}');
-      return Object.assign({}, fallback, saved || {});
-    } catch (_) {
+      const s = JSON.parse(localStorage.getItem(KEY) || 'null') || {};
+      return Object.assign({}, fallback, s);
+    } catch (e) {
       return Object.assign({}, fallback);
     }
   }
-
-  function normalizeState() {
-    state.settings = Object.assign({}, fallback.settings, state.settings || {});
-    state.transactions = Array.isArray(state.transactions) ? state.transactions : [];
-    state.loans = Array.isArray(state.loans) ? state.loans : [];
-    state.categories = Array.isArray(state.categories) ? state.categories : fallback.categories.slice();
-    state.budgets = Array.isArray(state.budgets) ? state.budgets : [];
-    state.goals = Array.isArray(state.goals) ? state.goals : [];
-    state.reportMonth = state.reportMonth || today.slice(0, 7);
-    state.currentType = state.currentType || 'expense';
-    repairTransactionIds();
+  function saveState() {
+    try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) {}
   }
 
-  function saveState() {
-    try {
-      localStorage.setItem(KEY, JSON.stringify(state));
-    } catch (_) {
-      toast('Unable to save local data');
-    }
+  let state = loadState();
+
+  function toast(msg) {
+    const el = $('toast');
+    if (!el) return;
+    el.textContent = msg;
+    el.classList.add('on');
+    clearTimeout(el._t);
+    el._t = setTimeout(() => el.classList.remove('on'), 2200);
   }
 
   function uid(prefix) {
-    return `${prefix || 'item'}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
-  }
-
-  function money(value) {
-    return `${Math.round(Number(value) || 0).toLocaleString()} MMK`;
-  }
-
-  function escapeHtml(value) {
-    return String(value ?? '').replace(/[&<>"']/g, ch => ({
-      '&': '&amp;',
-      '<': '&lt;',
-      '>': '&gt;',
-      '"': '&quot;',
-      "'": '&#39;'
-    }[ch]));
-  }
-
-  function toast(message) {
-    const element = $('toast');
-    if (!element) return;
-
-    element.textContent = message;
-    element.classList.add('on');
-
-    clearTimeout(element._timer);
-    element._timer = setTimeout(() => {
-      element.classList.remove('on');
-    }, 2200);
+    return `${prefix || 'id'}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2,8)}`;
   }
 
   function repairTransactionIds() {
     let changed = false;
-
-    state.transactions.forEach(transaction => {
-      if (!transaction.id) {
-        transaction.id = uid('tx');
-        changed = true;
-      }
-      if (!transaction.createdAt) {
-        transaction.createdAt = Date.now();
-        changed = true;
-      }
-      if (!transaction.date) {
-        transaction.date = today;
-        changed = true;
-      }
+    (state.transactions || []).forEach(tx => {
+      if (!tx.id) { tx.id = uid('tx'); changed = true; }
+      if (!tx.createdAt) { tx.createdAt = Date.now(); changed = true; }
+      if (!tx.date) { tx.date = today; changed = true; }
     });
-
     if (changed) saveState();
   }
 
-  function currentMonth() {
-    return state.reportMonth || today.slice(0, 7);
-  }
+  function currentMonth() { return state.reportMonth || today.slice(0,7); }
 
   function monthItems(includeIncome = true) {
-    return state.transactions.filter(transaction =>
-      String(transaction.date || '').slice(0, 7) === currentMonth()
-      && (includeIncome ? true : transaction.type !== 'income')
-    );
+    return (state.transactions || []).filter(t => String(t.date || '').slice(0,7) === currentMonth() && (includeIncome ? true : t.type !== 'income'));
   }
 
-  function getTotals(items) {
-    return items.reduce((result, transaction) => {
-      const amount = Number(transaction.amount) || 0;
-      if (transaction.type === 'income') result.income += amount;
-      else if (transaction.type === 'expense') result.expense += amount;
-      else if (transaction.type === 'loan') result.loan += amount;
-      else if (transaction.type === 'credit') result.credit += amount;
-      return result;
-    }, { income: 0, expense: 0, loan: 0, credit: 0 });
-  }
-
-  function safeClosest(event, selector) {
-    if (!event || !event.target) return null;
-    let target = event.target;
-    if (target.nodeType === 3) target = target.parentElement;
-    if (target && typeof target.closest === 'function') return target.closest(selector);
-    return null;
-  }
-
-  function showPage(pageId) {
-    document.querySelectorAll('.page').forEach(page => page.classList.toggle('active', page.id === pageId));
-    document.querySelectorAll('nav [data-page]').forEach(button => button.classList.toggle('active', button.dataset.page === pageId));
-    window.scrollTo(0, 0);
-  }
-
-  function setTransactionType(type) {
-    state.currentType = type || 'expense';
-    const titles = {
-      expense: 'Add Expense',
-      income: 'Add Income',
-      loan: 'Add Loan',
-      credit: 'Add Loan Repayment'
-    };
-    const title = $('formTitle');
-    if (title) title.textContent = titles[state.currentType] || 'Add Transaction';
-
-    document.querySelectorAll('[data-type]').forEach(button => {
-      button.classList.toggle('active', button.dataset.type === state.currentType);
-    });
-
-    populateCategories();
-    updateLoanRepaymentField();
-  }
-
-  function populateCategories() {
-    const select = $('category');
-    if (!select) return;
-
-    let categories = state.categories.filter(c => c.type === state.currentType);
-
-    if (state.currentType === 'credit') {
-      categories = [{ name: 'Loan Repayment', type: 'credit' }];
-    }
-
-    if (!categories.length) {
-      categories = [{
-        name: state.currentType === 'income' ? 'General Income' : 'General',
-        type: state.currentType
-      }];
-    }
-
-    select.innerHTML = categories.map(c => `
-      <option value="${escapeHtml(c.name)}">${escapeHtml(c.name)}</option>
-    `).join('');
-  }
-
-  function availableLoans() {
-    return (state.loans || []).filter(l => Number(l.remaining) > 0);
+  function totals(xs) {
+    return xs.reduce((r, t) => {
+      const n = Number(t.amount) || 0;
+      if (t.type === 'income') r.income += n;
+      else if (t.type === 'expense') r.expense += n;
+      else if (t.type === 'loan') r.loan += n;
+      else if (t.type === 'credit') r.credit += n;
+      return r;
+    }, { income:0, expense:0, loan:0, credit:0 });
   }
 
   function updateLoanRepaymentField() {
-    const form = $('form');
-    if (!form) return;
-
-    let holder = $('loanSelectHolder');
-    if (!holder) {
-      holder = document.createElement('div');
-      holder.id = 'loanSelectHolder';
-      holder.className = 'loan-select-holder';
-      const note = $('note');
-      if (note && note.parentElement) {
-        note.parentElement.insertAdjacentElement('afterend', holder);
-      } else {
-        form.appendChild(holder);
-      }
-    }
-
-    if (state.currentType !== 'credit') {
-      holder.style.display = 'none';
-      holder.innerHTML = '';
-      return;
-    }
-
+    const holder = $('loanSelectHolder');
+    if (!holder) return;
+    const loans = (state.loans || []).filter(l => Number(l.remaining) > 0);
+    if (!loans.length) { holder.style.display = 'none'; holder.innerHTML = ''; return; }
     holder.style.display = '';
-    const loans = availableLoans();
-    if (!loans.length) {
-      holder.innerHTML = `
-        <label>Loan to repay
-          <select id="loanRepaySelect" name="loanRepaySelect">
-            <option value="">No outstanding loans</option>
-          </select>
-        </label>
-      `;
-      return;
+    if (!holder.querySelector('select')) {
+      const label = document.createElement('label');
+      label.textContent = 'Select loan to repay';
+      const select = document.createElement('select');
+      select.id = 'loanRepaySelect';
+      select.name = 'loanRepaySelect';
+      holder.appendChild(label);
+      holder.appendChild(select);
     }
-
-    holder.innerHTML = `
-      <label>Loan to repay
-        <select id="loanRepaySelect" name="loanRepaySelect">
-          <option value="">Choose a loan</option>
-          ${loans.map(loan => `
-            <option value="${escapeHtml(String(loan.id))}">
-              ${escapeHtml(loan.name || 'Loan')} — ${money(loan.remaining)}
-            </option>
-          `).join('')}
-        </select>
-      </label>
-    `;
+    const select = holder.querySelector('select');
+    select.innerHTML = `<option value="">-- choose loan --</option>` + loans.map(l => `<option value="${esc(String(l.id))}">${esc(l.name || 'Loan')} — ${money(l.remaining)}</option>`).join('');
   }
 
-  function findLoan(id) {
-    return (state.loans || []).find(l => String(l.id) === String(id));
+  function populateCategories() {
+    const s = $('category');
+    if (!s) return;
+    const list = (state.categories || []).filter(c => c.type === state.currentType);
+    s.innerHTML = list.map(c => `<option>${esc(c.name)}</option>`).join('') || `<option>General</option>`;
   }
 
-  function createLoanTransaction(amount, date, note, category) {
-    const transactionId = uid('tx');
-    const loanId = uid('loan');
-
-    const transaction = {
-      id: transactionId,
-      type: 'income',
-      amount,
-      date,
-      category: category || 'Loan',
-      note: note || '',
-      loanType: 'loan',
-      loanId,
-      createdAt: Date.now()
-    };
-
-    const loan = {
-      id: loanId,
-      name: note || 'Loan',
-      principal: amount,
-      remaining: amount,
-      date,
-      note: note || '',
-      createdAt: transaction.createdAt
-    };
-
-    state.loans.push(loan);
-    state.transactions.push(transaction);
-    return transaction;
+  function repairLoanRecords() {
+    state.loans = Array.isArray(state.loans) ? state.loans : [];
+    let changed = false;
+    (state.transactions || []).forEach(tx => {
+      const cat = String(tx.category || '').toLowerCase();
+      const isLoanReceipt = cat === 'loan' || cat === 'loan received' || tx.loanType === 'loan' || tx.type === 'loan';
+      const isPayback = cat === 'loan repayment' || cat === 'loan payback' || tx.loanType === 'payback';
+      if (isLoanReceipt && tx.type !== 'income') { tx.type = 'income'; changed = true; }
+      if (isPayback && tx.type !== 'expense') { tx.type = 'expense'; changed = true; }
+      if (isLoanReceipt && !tx.loanId) { tx.loanId = `loan-${tx.id || tx.createdAt || Date.now()}`; changed = true; }
+    });
+    (state.transactions || []).filter(tx => tx.type === 'income' && tx.loanId).forEach(tx => {
+      const found = state.loans.find(l => String(l.id) === String(tx.loanId));
+      if (!found) {
+        state.loans.push({
+          id: tx.loanId,
+          name: tx.note || 'Loan',
+          principal: Number(tx.amount) || 0,
+          remaining: Number(tx.amount) || 0,
+          date: tx.date,
+          note: tx.note || '',
+          createdAt: tx.createdAt || Date.now()
+        });
+        changed = true;
+      }
+    });
+    if (changed) saveState();
+    return state;
   }
 
-  function createRepaymentTransaction(amount, date, note, category, loanId) {
-    const loan = findLoan(loanId);
-    if (!loan) throw new Error('Selected loan was not found.');
-
-    const remaining = Number(loan.remaining) || 0;
-    if (remaining <= 0) throw new Error('The selected loan has no remaining balance.');
-
-    const transaction = {
-      id: uid('tx'),
-      type: 'expense',
-      amount,
-      date,
-      category: category || 'Loan Repayment',
-      note: note || `Repayment — ${loan.name || 'Loan'}`,
-      loanType: 'payback',
-      loanId,
-      createdAt: Date.now()
-    };
-
-    loan.remaining = Math.max(0, remaining - amount);
-    state.transactions.push(transaction);
-    return transaction;
-  }
-
-  function createNormalTransaction(type, amount, date, category, note) {
-    const transaction = {
-      id: uid('tx'),
-      type,
-      amount,
-      date,
-      category: category || 'General',
-      note: note || '',
-      createdAt: Date.now()
-    };
-    state.transactions.push(transaction);
-    return transaction;
-  }
-
-  async function saveTransaction(event) {
-    event.preventDefault();
-
-    const amountElement = $('amount');
-    const dateElement = $('date');
-    const categoryElement = $('category');
-    const noteElement = $('note');
-
-    const amount = Number(amountElement && amountElement.value);
-    const date = (dateElement && dateElement.value) || today;
-    const category = (categoryElement && categoryElement.value) || 'General';
-    const note = (noteElement && noteElement.value.trim()) || '';
-
-    if (!amount || amount <= 0) {
-      toast('Enter an amount greater than zero');
-      return;
-    }
-
-    let transaction;
-
-    try {
-      if (state.currentType === 'loan') {
-        transaction = createLoanTransaction(amount, date, note, category);
-      } else if (state.currentType === 'credit') {
-        const loanSelect = $('loanRepaySelect');
-        const loanId = loanSelect && loanSelect.value;
-        if (!loanId) {
-          toast('Choose a loan to repay');
-          return;
+  function applyRepayments() {
+    state.loans = Array.isArray(state.loans) ? state.loans : [];
+    let changed = false;
+    const loansById = {};
+    state.loans.forEach(l => { loansById[String(l.id)] = l; });
+    const txs = (state.transactions || []).slice().sort((a,b) => (a.createdAt||0) - (b.createdAt||0));
+    txs.forEach(tx => {
+      if (tx.type === 'expense' && tx.loanId && !tx._loanApplied) {
+        const loan = loansById[String(tx.loanId)];
+        if (loan) {
+          const amt = Number(tx.amount) || 0;
+          loan.remaining = Math.max(0, (Number(loan.remaining) || 0) - amt);
+          tx._loanApplied = true;
+          changed = true;
         }
-        transaction = createRepaymentTransaction(amount, date, note, category, loanId);
-      } else {
-        transaction = createNormalTransaction(
-          state.currentType === 'income' ? 'income' : 'expense',
-          amount,
-          date,
-          category,
-          note
-        );
-      }
-    } catch (err) {
-      toast(err.message || 'Unable to save transaction');
-      return;
-    }
-
-    saveState();
-    render();
-
-    showPage('home');
-    toast('Transaction saved');
-
-    await queueSync();
-  }
-
-  function mergeById(serverItems, localItems) {
-    const result = {};
-    const noId = [];
-
-    (Array.isArray(serverItems) ? serverItems : []).forEach(item => {
-      if (!item) return;
-      if (item.id) result[String(item.id)] = item;
-      else noId.push(item);
-    });
-
-    (Array.isArray(localItems) ? localItems : []).forEach(item => {
-      if (!item) return;
-      if (item.id) {
-        if (!result[String(item.id)]) result[String(item.id)] = item;
-      } else {
-        noId.push(item);
       }
     });
-
-    return Object.values(result).concat(noId);
-  }
-
-  function mergeByKey(serverItems, localItems, key) {
-    const result = {};
-
-    (Array.isArray(serverItems) ? serverItems : []).forEach(item => {
-      if (item && item[key] !== undefined) result[String(item[key])] = item;
-    });
-
-    (Array.isArray(localItems) ? localItems : []).forEach(item => {
-      if (item && item[key] !== undefined) {
-        if (!result[String(item[key])]) result[String(item[key])] = item;
-      }
-    });
-
-    return Object.values(result);
-  }
-
-  async function api(action, payload) {
-    if (!state.settings.syncUrl) throw new Error('Google Sheets sync URL is not configured.');
-    const response = await fetch(state.settings.syncUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-      body: JSON.stringify({ action, payload: payload || {} })
-    });
-
-    if (!response.ok) throw new Error(`Sync request failed: ${response.status}`);
-    const data = await response.json();
-    if (data && data.ok === false) throw new Error(data.message || 'Google Sheets sync failed.');
-    return data;
-  }
-
-  async function syncOnce() {
-    if (!state.settings.syncUrl) return false;
-
-    let serverData = { transactions: [], loans: [], categories: [], budgets: [], goals: [] };
-
-    try {
-      const response = await api('getAll');
-      if (response && response.data) serverData = response.data;
-    } catch (e) {
-      console.warn('pull failed', e);
-    }
-
-    const mergedTransactions = mergeById(serverData.transactions, state.transactions);
-    const mergedLoans = mergeById(serverData.loans, state.loans);
-    const mergedCategories = mergeByKey(serverData.categories, state.categories, 'name');
-    const mergedBudgets = mergeByKey(serverData.budgets, state.budgets, 'category');
-    const mergedGoals = mergeByKey(serverData.goals, state.goals, 'name');
-
-    const payload = {
-      transactions: mergedTransactions,
-      loans: mergedLoans,
-      categories: mergedCategories,
-      budgets: mergedBudgets,
-      goals: mergedGoals
-    };
-
-    const response = await api('replaceAll', payload);
-    if (response && response.ok === false) throw new Error(response.message || 'Replace failed.');
-
-    state.transactions = mergedTransactions;
-    state.loans = mergedLoans;
-    state.categories = mergedCategories;
-    state.budgets = mergedBudgets;
-    state.goals = mergedGoals;
-    state.settings.lastSynced = new Date().toISOString();
-    saveState();
-    return true;
-  }
-
-  async function queueSync() {
-    if (!state.settings.syncUrl) return;
-
-    if (syncing) {
-      syncQueued = true;
-      return;
-    }
-
-    syncing = true;
-    try {
-      do {
-        syncQueued = false;
-        await syncOnce();
-      } while (syncQueued);
-    } catch (e) {
-      console.warn('sync failed', e);
-      toast('Saved locally; sync failed');
-    } finally {
-      syncing = false;
-      render();
-    }
-  }
-
-  async function pullFromSheets() {
-    if (!state.settings.syncUrl || syncing) return;
-
-    syncing = true;
-    try {
-      const response = await api('getAll');
-      if (response && response.data) {
-        state.transactions = mergeById(response.data.transactions, state.transactions);
-        state.loans = mergeById(response.data.loans, state.loans);
-        state.categories = mergeByKey(response.data.categories, state.categories, 'name');
-        state.budgets = mergeByKey(response.data.budgets, state.budgets, 'category');
-        state.goals = mergeByKey(response.data.goals, state.goals, 'name');
-        state.settings.lastSynced = new Date().toISOString();
-        saveState();
-        render();
-        updateLoanRepaymentField();
-        toast('Data pulled from Google Sheets');
-      }
-    } catch (e) {
-      console.warn('pull failed', e);
-      toast('Unable to pull from Google Sheets');
-    } finally {
-      syncing = false;
-    }
+    if (changed) saveState();
+    return state;
   }
 
   function renderLoanSummary() {
-    let host = $('loanBI');
-    if (!host) {
-      host = document.createElement('div');
-      host.id = 'loanBI';
-      host.className = 'panel';
-      const dashboard = $('dashboard');
-      if (dashboard) dashboard.appendChild(host);
-    }
-
+    repairLoanRecords();
+    applyRepayments();
+    const host = $('loanBI');
     if (!host) return;
-
-    const rows = monthItems(false);
-    const received = rows.filter(t => t.type === 'income' && t.loanId).reduce((s, t) => s + (Number(t.amount) || 0), 0);
-    const payback = rows.filter(t => t.type === 'expense' && t.loanId).reduce((s, t) => s + (Number(t.amount) || 0), 0);
+    const monthKey = currentMonth();
+    const rows = (state.transactions || []).filter(tx => String(tx.date || '').slice(0,7) === monthKey);
+    const payback = rows.filter(tx => tx.type === 'expense' && tx.loanId).reduce((s, t) => s + (Number(t.amount) || 0), 0);
+    const received = rows.filter(tx => tx.type === 'income' && tx.loanId).reduce((s, t) => s + (Number(t.amount) || 0), 0);
     const outstanding = (state.loans || []).reduce((s, l) => s + (Number(l.remaining) || 0), 0);
-
+    const loanRows = (state.loans || []).map(loan => {
+      return `<div class="loan-bi-row"><span>${esc(loan.name||'Loan')}<small>Principal: ${money(loan.principal)}</small></span><b>${money(loan.remaining)}</b></div>`;
+    }).join('') || `<div class="empty muted">No loan records yet</div>`;
     host.innerHTML = `
       <div class="loan-bi-grid">
         <div class="loan-bi-stat"><small>Loan received</small><strong>${money(received)}</strong></div>
-        <div class="loan-bi-stat"><small>Loan repayment</small><strong>${money(payback)}</strong></div>
+        <div class="loan-bi-stat"><small>Loan payback</small><strong>${money(payback)}</strong></div>
         <div class="loan-bi-stat"><small>Outstanding liability</small><strong>${money(outstanding)}</strong></div>
       </div>
-      <div class="loan-bi-list">
-        ${state.loans.length ? state.loans.map(loan => `
-          <div class="loan-bi-row">
-            <span>${escapeHtml(loan.name || 'Loan')}<small>Principal: ${money(loan.principal)}</small></span>
-            <b>${money(loan.remaining)}</b>
-          </div>
-        `).join('') : '<div class="empty">No loan records yet</div>'}
-      </div>
+      <div class="loan-bi-list">${loanRows}</div>
     `;
   }
 
-  function renderRecentTransactions() {
-    const recent = $('recent');
-    if (!recent) return;
-
-    const transactions = state.transactions.slice().sort((a, b) => String(b.date || '').localeCompare(String(a.date || ''))).slice(0, 5);
-    recent.innerHTML = transactions.length ? transactions.map(t => `
-      <div class="row">
-        <span>${escapeHtml(t.category || t.type)}<small>${escapeHtml(t.date || '')} ${escapeHtml(t.note || '')}</small></span>
-        <b>${t.type === 'income' ? '+' : '-'}${money(t.amount)}</b>
-      </div>
-    `).join('') : '<p class="muted">Your recent activity will appear here.</p>';
-  }
-
-  function renderTransactionRows() {
-    const rows = $('rows');
-    if (!rows) return;
-
-    rows.innerHTML = state.transactions.slice().sort((a, b) => String(b.date || '').localeCompare(String(a.date || ''))).map((t, i) => `
-      <tr>
-        <td>${escapeHtml(t.date || '')}</td>
-        <td><b>${escapeHtml(t.category || t.type)}</b><small>${escapeHtml(t.note || '')}</small></td>
-        <td>${t.type === 'income' ? '+' : '-'}${money(t.amount)}</td>
-        <td><button type="button" data-remove="${i}">Remove</button></td>
-      </tr>
-    `).join('');
-  }
-
-  function daysRemainingInMonth() {
-    const now = new Date();
-    const year = now.getFullYear();
-    const month = now.getMonth();
-    const nextMonth = new Date(year, month + 1, 1);
-    const lastDay = new Date(nextMonth - 1);
-    const todayDay = now.getDate();
-    return Math.max(1, lastDay.getDate() - todayDay);
-  }
-
-  function renderDailyBudgets() {
-    const host = $('dailyBudgets');
+  function renderTransactions() {
+    const host = $('txList') || $('rows');
     if (!host) return;
-
-    const budgets = state.budgets || [];
-    if (!budgets.length) {
-      host.innerHTML = '<div class="muted">No budgets set</div>';
-      return;
+    const xs = (state.transactions || []).slice().reverse();
+    if (!xs.length) { host.innerHTML = `<div class="muted">No transactions</div>`; return; }
+    if (host.tagName === 'TBODY') {
+      host.innerHTML = xs.map((tx, idx) => {
+        const right = tx.type === 'income' ? `<b style="color:green">${money(tx.amount)}</b>` : `<b>${money(tx.amount)}</b>`;
+        return `<tr>
+          <td>${esc(tx.date || '')}</td>
+          <td><div style="font-weight:700">${esc(tx.category || tx.note || tx.type)}</div><small class="muted">${esc(tx.note || '')} ${tx.loanId ? ' • ' + esc(tx.loanId) : ''}</small></td>
+          <td>${right}</td>
+          <td><button data-remove="${tx.id}">Delete</button></td>
+        </tr>`;
+      }).join('');
+    } else {
+      host.innerHTML = xs.map(tx => {
+        const right = tx.type === 'income' ? `<b style="color:green">${money(tx.amount)}</b>` : `<b>${money(tx.amount)}</b>`;
+        return `<div class="row" style="display:flex;gap:8px;align-items:center;justify-content:space-between;padding:8px;border-radius:10px;border:1px solid var(--line);background:var(--card)">
+                  <div>
+                    <div style="font-weight:700">${esc(tx.category || tx.note || tx.type)}</div>
+                    <small class="muted">${esc(tx.note || '')} ${tx.loanId ? ' • ' + esc(tx.loanId) : ''}</small>
+                  </div>
+                  <div>${right}</div>
+                </div>`;
+      }).join('');
     }
-
-    const remainingDays = daysRemainingInMonth();
-    const items = monthItems(false);
-
-    host.innerHTML = budgets.map(b => {
-      const spent = items.filter(t => t.type === 'expense' && (t.category || 'General') === b.category).reduce((s, t) => s + (Number(t.amount) || 0), 0);
-      const remaining = Math.max(0, (Number(b.limit) || 0) - spent);
-      const daily = remainingDays ? Math.round(remaining / remainingDays) : remaining;
-
-      return `
-        <div class="daily-row">
-          <div class="left">
-            <b>${escapeHtml(b.category)}</b>
-            <small>Remaining ${money(remaining)}</small>
-          </div>
-          <div class="right">
-            <b>${money(daily)}</b>
-            <small>/day</small>
-          </div>
-        </div>
-      `;
-    }).join('');
   }
 
-  function renderBudgetReport() {
-    const host = $('budgetReport');
-    if (!host) return;
-
-    const budgets = state.budgets || [];
-    if (!budgets.length) {
-      host.innerHTML = '<div class="muted">No budgets set</div>';
-      return;
-    }
-
-    const items = monthItems(false);
-    host.innerHTML = budgets.map(b => {
-      const spent = items.filter(t => t.type === 'expense' && (t.category || 'General') === b.category).reduce((s, t) => s + (Number(t.amount) || 0), 0);
-      const limit = Number(b.limit) || 0;
-      const pct = limit > 0 ? Math.min(100, Math.round(spent / limit * 100)) : 0;
-
-      return `
-        <div class="budget-report-row">
-          <div class="label">
-            ${escapeHtml(b.category)}
-            <small>${money(spent)} / ${money(limit)}</small>
-          </div>
-          <div class="bar">
-            <div class="fill" style="width:${pct}%"></div>
-          </div>
-        </div>
-      `;
-    }).join('');
+  function greeting() {
+    const h = new Date().getHours();
+    const part = h < 12 ? 'Morning' : h < 17 ? 'Afternoon' : h < 21 ? 'Evening' : 'Night';
+    if ($('greet')) $('greet').textContent = `GOOD ${part.toUpperCase()}`;
   }
 
-  function render() {
-    const items = monthItems(false);
-    const totals = getTotals(items);
+  function currentMonth() { return state.reportMonth || today.slice(0,7); }
 
-    const remaining = totals.income - totals.expense - totals.loan - totals.credit;
-
-    const values = [
-      ['income', totals.income],
-      ['expense', totals.expense],
-      ['loan', totals.loan],
-      ['credit', totals.credit],
-      ['remaining', remaining],
-      ['cashflow', remaining]
+  function renderHeaderStats() {
+    const xs = (state.transactions || []).filter(t => String(t.date || '').slice(0,7) === currentMonth());
+    const t = totals(xs);
+    const remainingMoney = (t.income || 0) - (t.expense || 0) - (t.loan || 0) - (t.credit || 0);
+    const daily = Math.max(0, Math.floor(remainingMoney / Math.max(1, (new Date(new Date().getFullYear(), new Date().getMonth()+1, 0)).getDate() - new Date().getDate() + 1)));
+    const map = [
+      ['income', t.income],
+      ['expense', t.expense],
+      ['loan', t.loan],
+      ['daily', daily],
+      ['remaining', remainingMoney]
     ];
-
-    values.forEach(([id, value]) => {
+    map.forEach(([id, val]) => {
       const el = $(id);
-      if (el) el.textContent = money(value);
-    });
-
-    const monthEl = $('month');
-    if (monthEl) monthEl.value = currentMonth();
-
-    const countEl = $('txCount');
-    if (countEl) countEl.textContent = `Activity (${state.transactions.length})`;
-
-    renderRecentTransactions();
-    renderTransactionRows();
-    renderLoanSummary();
-    renderDailyBudgets();
-    renderBudgetReport();
-    updateLoanRepaymentField();
-    applyTheme();
-    renderSettingsLists();
-  }
-
-  function applyTheme() {
-    const theme = state.settings.theme === 'dark' ? 'dark' : 'light';
-    document.body.classList.toggle('dark', theme === 'dark');
-
-    const themeButtons = document.querySelectorAll('#theme, #switch, [data-theme-toggle], .toggle-theme');
-    themeButtons.forEach(btn => {
-      btn.classList.toggle('on', theme === 'dark');
-      btn.setAttribute('aria-pressed', String(theme === 'dark'));
-      if (btn.tagName === 'BUTTON') btn.textContent = theme === 'dark' ? '☾' : '☼';
-    });
-
-    const status = $('currentTheme');
-    if (status) status.textContent = theme;
-
-    document.querySelectorAll('input, select, textarea, button, nav, .page, .panel').forEach(el => {
-      if (theme === 'dark') el.classList.add('dark');
-      else el.classList.remove('dark');
+      if (!el) return;
+      const strong = el.querySelector('strong');
+      if (strong) strong.textContent = money(val);
+      else el.textContent = money(val);
     });
   }
 
-  function handleClick(event) {
-    const pageButton = safeClosest(event, '[data-page]');
-    if (pageButton) {
-      showPage(pageButton.dataset.page);
-      return;
+  async function saveTransactionForm(e) {
+    e.preventDefault();
+    const amountInput = $('amount');
+    const dateInput = $('date');
+    const noteInput = $('note');
+    const categorySelect = $('category');
+    const type = (() => {
+      // prefer tabs if present
+      const activeTab = document.querySelector('.tabs button.active');
+      if (activeTab && activeTab.dataset && activeTab.dataset.type) return activeTab.dataset.type;
+      // fallback to state.currentType
+      return state.currentType || 'expense';
+    })();
+
+    const amount = Number(amountInput?.value || 0);
+    if (!amount || amount <= 0) { toast('Enter an amount greater than 0'); return; }
+    const date = dateInput?.value || today;
+    const note = noteInput?.value || '';
+    const category = categorySelect?.value || '';
+
+    // Create transaction
+    let tx;
+    if (type === 'loan') {
+      // create loan (income + loan record)
+      const loanId = uid('loan');
+      tx = { id: uid('tx'), type: 'income', amount, category: category || 'Loan', note, date, loanId, loanType: 'loan', createdAt: Date.now() };
+      state.transactions = state.transactions || [];
+      state.transactions.push(tx);
+      state.loans = state.loans || [];
+      state.loans.push({
+        id: loanId,
+        name: note || 'Loan',
+        principal: Number(amount) || 0,
+        remaining: Number(amount) || 0,
+        date,
+        note,
+        createdAt: tx.createdAt
+      });
+    } else if (type === 'credit') {
+      // repayment
+      const loanSelect = $('loanRepaySelect');
+      const loanId = loanSelect && loanSelect.value;
+      if (!loanId) { toast('Choose a loan to repay'); return; }
+      tx = { id: uid('tx'), type: 'expense', amount, category: category || 'Loan Repayment', note, date, loanId, loanType: 'payback', createdAt: Date.now() };
+      state.transactions = state.transactions || [];
+      state.transactions.push(tx);
+      // apply repayment immediately
+      const loan = state.loans.find(l => String(l.id) === String(loanId));
+      if (loan) loan.remaining = Math.max(0, (Number(loan.remaining) || 0) - Number(amount));
+    } else {
+      tx = { id: uid('tx'), type: type === 'income' ? 'income' : 'expense', amount, category, note, date, createdAt: Date.now() };
+      state.transactions = state.transactions || [];
+      state.transactions.push(tx);
     }
 
-    const addButton = safeClosest(event, '[data-add]');
-    if (addButton) {
-      setTransactionType(addButton.dataset.add);
+    saveState();
+    // ensure loan dropdown updates immediately when a loan is created
+    try { updateLoanRepaymentField(); } catch (_) {}
+    renderAll();
+    toast('Saved');
+    // optional: queue sync if configured
+    try { if (state.settings && state.settings.syncUrl) queueSync().catch(()=>{}); } catch(_){}
+    // go home
+    showPage('home');
+    // reset form
+    const form = $('form');
+    if (form) form.reset();
+    if ($('date')) $('date').value = today;
+  }
+
+  function wireTabsIfNeeded() {
+    try {
+      const tabs = document.querySelectorAll('.tabs [data-type]');
+      if (!tabs || !tabs.length) return;
+      tabs.forEach(btn => {
+        btn.addEventListener('click', () => {
+          const t = btn.dataset.type;
+          // set visual active class
+          document.querySelectorAll('.tabs [data-type]').forEach(b => b.classList.toggle('active', b.dataset.type === t));
+          // set state and UI
+          state.currentType = t;
+          populateCategories();
+          if (t === 'credit') updateLoanRepaymentField();
+          else {
+            const holder = $('loanSelectHolder'); if (holder) { holder.style.display = 'none'; holder.innerHTML = ''; }
+          }
+          const title = $('formTitle');
+          if (title) {
+            const titles = { expense: 'Add Expense', income: 'Add Income', loan: 'Record Loan', credit: 'Loan Repayment' };
+            title.textContent = titles[t] || 'Add Transaction';
+          }
+        });
+      });
+      // ensure current tab reflected
+      if (state.currentType) {
+        document.querySelectorAll('.tabs [data-type]').forEach(b => b.classList.toggle('active', b.dataset.type === state.currentType));
+      }
+    } catch (e) { console.warn('wireTabsIfNeeded error', e); }
+  }
+
+  function handleGlobalClicks(e) {
+    // nav/page
+    const page = e.target.closest && e.target.closest('[data-page]');
+    if (page) { showPage(page.dataset.page); return; }
+    // quick actions
+    const add = e.target.closest && e.target.closest('[data-add]');
+    if (add) {
+      const type = add.dataset.add;
+      // set tab active
+      const tab = document.querySelector(`.tabs [data-type="${type}"]`);
+      if (tab) tab.click();
+      else {
+        state.currentType = type;
+        populateCategories();
+      }
       showPage('add');
       return;
     }
-
-    const typeButton = safeClosest(event, '[data-type]');
-    if (typeButton) {
-      setTransactionType(typeButton.dataset.type);
-      return;
-    }
-
-    const removeButton = safeClosest(event, '[data-remove]');
-    if (removeButton) {
-      const index = Number(removeButton.dataset.remove);
-      if (!Number.isNaN(index)) {
-        const transactions = state.transactions.slice().sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')));
-        const transaction = transactions[index];
-        if (transaction) {
-          state.transactions = state.transactions.filter(item => String(item.id) !== String(transaction.id));
-          saveState();
-          render();
-          queueSync();
-        }
-      }
-      return;
-    }
-
-    const editCat = safeClosest(event, '[data-edit-cat]');
-    if (editCat) {
-      openEditCategory(editCat.dataset.editCat);
-      return;
-    }
-
-    const deleteCat = safeClosest(event, '[data-delete-cat]');
-    if (deleteCat) {
-      const name = deleteCat.dataset.deleteCat;
-      if (confirm(`Delete category "${name}"? This will not remove existing transactions.`)) {
-        state.categories = state.categories.filter(c => c.name !== name);
+    // remove tx (by id)
+    const rem = e.target.closest && e.target.closest('[data-remove]');
+    if (rem) {
+      const id = rem.dataset.remove;
+      if (id) {
+        state.transactions = (state.transactions || []).filter(t => String(t.id) !== String(id));
         saveState();
-        render();
-        queueSync();
-      }
-      return;
-    }
-
-    const editBud = safeClosest(event, '[data-edit-bud]');
-    if (editBud) {
-      openEditBudget(editBud.dataset.editBud);
-      return;
-    }
-
-    const deleteBud = safeClosest(event, '[data-delete-bud]');
-    if (deleteBud) {
-      const cat = deleteBud.dataset.deleteBud;
-      if (confirm(`Delete budget for "${cat}"?`)) {
-        state.budgets = state.budgets.filter(b => b.category !== cat);
-        saveState();
-        render();
-        queueSync();
+        renderAll();
+        try { if (state.settings && state.settings.syncUrl) queueSync().catch(()=>{}); } catch(_){}
       }
       return;
     }
   }
 
-  function handleSubmit(event) {
-    if (event.target && event.target.id === 'form') {
-      saveTransaction(event);
-      return;
-    }
-
-    if (event.target && event.target.id === 'categoryForm') {
-      event.preventDefault();
-      const name = $('newCategoryName').value.trim();
-      const type = $('newCategoryType').value;
-
-      if (!name) {
-        toast('Enter category name');
-        return;
-      }
-
-      state.categories = state.categories || [];
-      state.categories.push({ name, type });
-      $('newCategoryName').value = '';
-      saveState();
-      render();
-      queueSync();
-      return;
-    }
-
-    if (event.target && event.target.id === 'budgetForm') {
-      event.preventDefault();
-      const cat = $('budgetCategory').value.trim();
-      const amount = Number($('budgetAmount').value);
-
-      if (!cat || !amount || amount <= 0) {
-        toast('Invalid budget');
-        return;
-      }
-
-      state.budgets = state.budgets || [];
-      const idx = state.budgets.findIndex(b => b.category === cat);
-      if (idx >= 0) state.budgets[idx].limit = amount;
-      else state.budgets.push({ category: cat, limit: amount });
-
-      $('budgetAmount').value = '';
-      saveState();
-      render();
-      queueSync();
-      return;
-    }
-  }
-
-  function handleMonthChange(event) {
-    if (event.target && event.target.id === 'month') {
-      state.reportMonth = event.target.value || today.slice(0, 7);
-      saveState();
-      render();
-    }
-  }
-
-  function handleThemeClick() {
-    state.settings.theme = state.settings.theme === 'dark' ? 'light' : 'dark';
-    saveState();
-    applyTheme();
-  }
-
-  function openEditCategory(name) {
-    const existing = state.categories.find(c => c.name === name);
-    if (!existing) return;
-
-    const newName = prompt('Edit category name', existing.name);
-    if (!newName) return;
-
-    const newType = prompt('Edit category type (expense/income/loan/credit)', existing.type) || existing.type;
-    existing.name = newName;
-    existing.type = newType;
-
-    saveState();
-    render();
-    queueSync();
-  }
-
-  function openEditBudget(category) {
-    const existing = state.budgets.find(b => b.category === category);
-    if (!existing) return;
-
-    const val = prompt(`Edit budget amount for ${category}`, String(existing.limit));
-    const n = Number(val);
-    if (!n || n <= 0) return;
-
-    existing.limit = n;
-    saveState();
-    render();
-    queueSync();
-  }
-
-  function renderSettingsLists() {
-    const settings = $('settings');
-    if (!settings) return;
-
-    const catsHtml = `
-      <div class="settings-section">
-        <h3>Categories</h3>
-        <form id="categoryForm">
-          <input id="newCategoryName" placeholder="Name" required />
-          <select id="newCategoryType">
-            <option value="expense">Expense</option>
-            <option value="income">Income</option>
-            <option value="loan">Loan</option>
-            <option value="credit">Repayment</option>
-          </select>
-          <button type="submit">Add</button>
-        </form>
-        <div class="list">
-          ${(state.categories || []).map(c => `
-            <div class="row">
-              <span>${escapeHtml(c.name)} <small>${escapeHtml(c.type)}</small></span>
-              <div class="actions">
-                <button type="button" data-edit-cat="${escapeHtml(c.name)}">Edit</button>
-                <button type="button" data-delete-cat="${escapeHtml(c.name)}">Delete</button>
-              </div>
-            </div>
-          `).join('')}
-        </div>
-      </div>
-    `;
-
-    const budsHtml = `
-      <div class="settings-section">
-        <h3>Budgets</h3>
-        <form id="budgetForm">
-          <select id="budgetCategory">
-            ${(state.categories || []).filter(c => c.type !== 'income').map(c => `
-              <option value="${escapeHtml(c.name)}">${escapeHtml(c.name)}</option>
-            `).join('')}
-          </select>
-          <input id="budgetAmount" type="number" placeholder="Amount" required />
-          <button type="submit">Save</button>
-        </form>
-        <div class="list">
-          ${(state.budgets || []).map(b => `
-            <div class="row">
-              <span>${escapeHtml(b.category)} <small>${money(b.limit)}</small></span>
-              <div class="actions">
-                <button type="button" data-edit-bud="${escapeHtml(b.category)}">Edit</button>
-                <button type="button" data-delete-bud="${escapeHtml(b.category)}">Delete</button>
-              </div>
-            </div>
-          `).join('')}
-        </div>
-      </div>
-    `;
-
-    settings.innerHTML = `<div class="settings-grid">${catsHtml}${budsHtml}</div>`;
-  }
-
-  function bindEvents() {
-    document.addEventListener('click', handleClick);
-    document.addEventListener('submit', handleSubmit);
-    document.addEventListener('change', handleMonthChange);
-
-    const themeButtons = document.querySelectorAll('#theme, #switch, [data-theme-toggle], .toggle-theme');
-    themeButtons.forEach(button => {
-      button.addEventListener('click', handleThemeClick);
+  // Sync helpers (lightweight; safe no-op if syncUrl not provided)
+  async function api(action, payload = {}) {
+    if (!state.settings || !state.settings.syncUrl) throw new Error('Add the Apps Script URL first.');
+    const r = await fetch(state.settings.syncUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action, payload })
     });
+    if (!r.ok) throw new Error('Sync failed');
+    return r.json();
+  }
 
-    const pushButton = $('push');
-    if (pushButton) pushButton.addEventListener('click', () => queueSync());
+  async function queueSync() {
+    if (!state.settings || !state.settings.syncUrl) return;
+    try {
+      await api('replaceAll', { transactions: state.transactions || [], loans: state.loans || [], categories: state.categories || [], budgets: state.budgets || [] });
+      toast('Pushed changes to sheet');
+    } catch (e) {
+      console.warn('sync failed', e);
+      toast('Push failed');
+    }
+  }
 
-    const pullButton = $('pull');
-    if (pullButton) pullButton.addEventListener('click', () => pullFromSheets());
+  function renderAll() {
+    greeting();
+    populateCategories();
+    renderHeaderStats();
+    renderTransactions();
+    renderLoanSummary();
+    updateLoanRepaymentField();
+    // other panels: budgets etc. left as-is
+    if ($('month')) $('month').value = currentMonth();
+    if ($('txCount')) $('txCount').textContent = `Activity (${(state.transactions||[]).length})`;
+  }
 
-    const saveSync = $('saveSyncUrl');
-    if (saveSync) saveSync.addEventListener('click', () => {
-      const syncInput = $('syncUrlInput') || $('syncUrl');
-      const value = syncInput ? syncInput.value.trim() : '';
-      state.settings.syncUrl = value;
-      saveState();
-      render();
+  function renderHeaderStats() {
+    const xs = (state.transactions || []).filter(t => String(t.date || '').slice(0,7) === currentMonth());
+    const t = totals(xs);
+    const remaining = (t.income || 0) - (t.expense || 0) - (t.loan || 0) - (t.credit || 0);
+    [['income', t.income], ['expense', t.expense], ['loan', t.loan], ['daily', Math.max(0, Math.floor(remaining / Math.max(1, (new Date(new Date().getFullYear(), new Date().getMonth()+1, 0)).getDate() - new Date().getDate() + 1)))) , ['remaining', remaining]].forEach(([id, val])=>{
+      const el = $(id);
+      if (!el) return;
+      const strong = el.querySelector('strong');
+      if (strong) strong.textContent = money(val);
+      else el.textContent = money(val);
     });
+  }
 
-    const testSync = $('testSync');
-    if (testSync) testSync.addEventListener('click', async () => {
+  function showPage(id) {
+    document.querySelectorAll('.page').forEach(p => p.classList.toggle('active', p.id === id));
+    document.querySelectorAll('nav [data-page]').forEach(b => b.classList.toggle('active', b.dataset.page === id));
+    if (id === 'home') renderAll();
+    if (id === 'settings') {
+      const inp = $('syncUrlInput'); if (inp) inp.value = state.settings?.syncUrl || '';
+    }
+  }
+
+  function applyTheme() {
+    document.body.classList.toggle('dark', state.settings?.theme === 'dark');
+    $('currentTheme') && ($('currentTheme').textContent = state.settings?.theme || 'light');
+    // update switch text
+    const themeBtns = document.querySelectorAll('#switch, #theme');
+    themeBtns.forEach(btn => {
+      if (btn.tagName === 'BUTTON') btn.textContent = state.settings?.theme === 'dark' ? '☾' : '☼';
+    });
+  }
+
+  function wireEvents() {
+    document.addEventListener('click', handleGlobalClicks);
+    document.getElementById('form')?.addEventListener('submit', saveTransactionForm);
+    document.querySelectorAll('nav [data-page]').forEach(b => b.addEventListener('click', () => showPage(b.dataset.page)));
+    document.querySelectorAll('.tabs [data-type]').forEach(b => b.addEventListener('click', () => {
+      // handled by wireTabsIfNeeded already
+    }));
+    document.getElementById('switch')?.addEventListener('click', () => {
+      state.settings = state.settings || {};
+      state.settings.theme = state.settings.theme === 'dark' ? 'light' : 'dark';
+      saveState();
+      applyTheme();
+    });
+    document.getElementById('saveSyncUrl')?.addEventListener('click', () => {
+      const url = ($('syncUrlInput')?.value || '').trim();
+      state.settings = state.settings || {};
+      state.settings.syncUrl = url;
+      saveState();
+      toast(url ? 'Sync URL saved' : 'Sync URL cleared');
+    });
+    document.getElementById('testSync')?.addEventListener('click', async () => {
+      const url = ($('syncUrlInput')?.value || '').trim();
+      if (!url) { toast('Enter Apps Script URL first'); return; }
+      state.settings = state.settings || {};
+      state.settings.syncUrl = url;
+      saveState();
+      try { await queueSync(); toast('Test sync done'); } catch (e) { toast('Test sync failed'); }
+    });
+    document.getElementById('pullFromSheets')?.addEventListener('click', async () => {
+      const url = ($('syncUrlInput')?.value || '').trim();
+      if (!url) { toast('Enter Apps Script URL first'); return; }
+      state.settings = state.settings || {};
+      state.settings.syncUrl = url;
+      saveState();
       try {
-        await pullFromSheets();
+        const res = await api('getAll');
+        if (res && res.data) {
+          state.transactions = res.data.transactions || state.transactions || [];
+          state.loans = res.data.loans || state.loans || [];
+          state.categories = res.data.categories || state.categories || [];
+          saveState();
+          renderAll();
+          toast('Pulled from sheet');
+        } else {
+          toast('No data from sheet');
+        }
       } catch (e) {
-        console.warn('sync test failed', e);
+        console.warn('pull failed', e);
+        toast('Pull failed');
       }
     });
-
-    const syncInput = $('syncUrlInput') || $('syncUrl');
-    if (syncInput) {
-      syncInput.value = state.settings.syncUrl || '';
-      syncInput.addEventListener('change', e => {
-        state.settings.syncUrl = e.target.value.trim();
-        saveState();
-        render();
-      });
-    }
-
-    const clearButton = $('clear');
-    if (clearButton) clearButton.addEventListener('click', () => {
-      if (!confirm('Delete all local transactions?')) return;
+    document.getElementById('clear')?.addEventListener('click', () => {
+      if (!confirm('Clear all transactions?')) return;
       state.transactions = [];
       state.loans = [];
       saveState();
-      render();
-      queueSync();
-      toast('Transactions cleared');
+      renderAll();
+      toast('Cleared');
     });
-
-    const dateInput = $('date');
-    if (dateInput && !dateInput.value) dateInput.value = today;
-
-    const monthInput = $('month');
-    if (monthInput) monthInput.value = currentMonth();
-
-    if (state.currentType) setTransactionType(state.currentType);
-    render();
-    showPage('home');
-    if (state.settings.syncUrl) pullFromSheets();
   }
 
-  function initializeUI() {
-    bindEvents();
+  function init() {
+    state.transactions = Array.isArray(state.transactions) ? state.transactions : [];
+    state.categories = Array.isArray(state.categories) ? state.categories : fallback.categories.slice();
+    state.budgets = Array.isArray(state.budgets) ? state.budgets : [];
+    state.loans = Array.isArray(state.loans) ? state.loans : [];
+    repairTransactionIds();
+    applyTheme();
+    wireEvents();
+    wireTabsIfNeeded();
+    renderAll();
+    // show initial page
+    showPage('home');
   }
 
   if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', initializeUI, { once: true });
-  } else {
-    initializeUI();
-  }
+    document.addEventListener('DOMContentLoaded', init, { once:true });
+  } else init();
 
   window.moneyflow = {
-    getState: () => state,
+    state,
     save: saveState,
-    render,
-    showPage,
-    queueSync,
-    pullFromSheets,
-    updateLoanRepaymentField,
-    applyTheme
+    renderAll,
+    applyTheme,
+    updateLoanRepaymentField
   };
 
-  window.setAppTheme = applyTheme;
-  window.getAppTheme = () => (document.body.classList.contains('dark') ? 'dark' : 'light');
 })();
