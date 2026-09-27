@@ -51,9 +51,10 @@
     const el = $('toast');
     if (!el) return;
     el.textContent = msg;
+    el.style.display = 'block';
     el.classList.add('on');
     clearTimeout(el._t);
-    el._t = setTimeout(() => el.classList.remove('on'), 2200);
+    el._t = setTimeout(() => { el.classList.remove('on'); el.style.display='none'; }, 2200);
   }
 
   function uid(prefix) {
@@ -189,7 +190,6 @@
 
   function renderTransactions() {
     const xs = (state.transactions || []).slice().reverse();
-    // recent panel (simple card list) - element #recent (div) and #recentRows (tbody)
     const recentDiv = $('recent');
     const recentTbody = $('recentRows');
     const txTbody = $('txRows');
@@ -201,7 +201,6 @@
       return;
     }
 
-    // Render compact cards into recentDiv
     if (recentDiv) {
       recentDiv.innerHTML = xs.slice(0,5).map(tx => {
         const right = tx.type === 'income' ? `<b style="color:green">${money(tx.amount)}</b>` : `<b>${money(tx.amount)}</b>`;
@@ -215,7 +214,6 @@
       }).join('');
     }
 
-    // Render recentRows (table)
     if (recentTbody) {
       recentTbody.innerHTML = xs.slice(0,8).map(tx => {
         const right = tx.type === 'income' ? `<b style="color:green">${money(tx.amount)}</b>` : `<b>${money(tx.amount)}</b>`;
@@ -228,7 +226,6 @@
       }).join('');
     }
 
-    // Render full transactions table (txRows)
     if (txTbody) {
       txTbody.innerHTML = xs.map(tx => {
         const right = tx.type === 'income' ? `<b style="color:green">${money(tx.amount)}</b>` : `<b>${money(tx.amount)}</b>`;
@@ -280,10 +277,8 @@
     const noteInput = $('note');
     const categorySelect = $('category');
     const type = (() => {
-      // prefer tabs if present
       const activeTab = document.querySelector('.tabs button.active');
       if (activeTab && activeTab.dataset && activeTab.dataset.type) return activeTab.dataset.type;
-      // fallback to state.currentType
       return state.currentType || 'expense';
     })();
 
@@ -293,10 +288,8 @@
     const note = noteInput?.value || '';
     const category = categorySelect?.value || '';
 
-    // Create transaction
     let tx;
     if (type === 'loan') {
-      // create loan (income + loan record)
       const loanId = uid('loan');
       tx = { id: uid('tx'), type: 'income', amount, category: category || 'Loan', note, date, loanId, loanType: 'loan', createdAt: Date.now() };
       state.transactions = state.transactions || [];
@@ -312,14 +305,12 @@
         createdAt: tx.createdAt
       });
     } else if (type === 'credit') {
-      // repayment
       const loanSelect = $('loanRepaySelect');
       const loanId = loanSelect && loanSelect.value;
       if (!loanId) { toast('Choose a loan to repay'); return; }
       tx = { id: uid('tx'), type: 'expense', amount, category: category || 'Loan Repayment', note, date, loanId, loanType: 'payback', createdAt: Date.now() };
       state.transactions = state.transactions || [];
       state.transactions.push(tx);
-      // apply repayment immediately
       const loan = state.loans.find(l => String(l.id) === String(loanId));
       if (loan) loan.remaining = Math.max(0, (Number(loan.remaining) || 0) - Number(amount));
     } else {
@@ -329,15 +320,11 @@
     }
 
     saveState();
-    // ensure loan dropdown updates immediately when a loan is created
     try { updateLoanRepaymentField(); } catch (_) {}
     renderAll();
     toast('Saved');
-    // optional: queue sync if configured
     try { if (state.settings && state.settings.syncUrl) queueSync().catch(()=>{}); } catch(_){}
-    // go home
     showPage('home');
-    // reset form
     const form = $('form');
     if (form) form.reset();
     if ($('date')) $('date').value = today;
@@ -350,15 +337,11 @@
       tabs.forEach(btn => {
         btn.addEventListener('click', () => {
           const t = btn.dataset.type;
-          // set visual active class
           document.querySelectorAll('.tabs [data-type]').forEach(b => b.classList.toggle('active', b.dataset.type === t));
-          // set state and UI
           state.currentType = t;
           populateCategories();
           if (t === 'credit') updateLoanRepaymentField();
-          else {
-            const holder = $('loanSelectHolder'); if (holder) { holder.style.display = 'none'; holder.innerHTML = ''; }
-          }
+          else { const holder = $('loanSelectHolder'); if (holder) { holder.style.display = 'none'; holder.innerHTML = ''; } }
           const title = $('formTitle');
           if (title) {
             const titles = { expense: 'Add Expense', income: 'Add Income', loan: 'Record Loan', credit: 'Loan Repayment' };
@@ -366,7 +349,6 @@
           }
         });
       });
-      // ensure current tab reflected
       if (state.currentType) {
         document.querySelectorAll('.tabs [data-type]').forEach(b => b.classList.toggle('active', b.dataset.type === state.currentType));
       }
@@ -374,14 +356,11 @@
   }
 
   function handleGlobalClicks(e) {
-    // nav/page
     const page = e.target.closest && e.target.closest('[data-page]');
     if (page) { showPage(page.dataset.page); return; }
-    // quick actions
     const add = e.target.closest && e.target.closest('[data-add]');
     if (add) {
       const type = add.dataset.add;
-      // set tab active
       const tab = document.querySelector(`.tabs [data-type="${type}"]`);
       if (tab) tab.click();
       else {
@@ -391,7 +370,6 @@
       showPage('add');
       return;
     }
-    // remove tx (by id)
     const rem = e.target.closest && e.target.closest('[data-remove]');
     if (rem) {
       const id = rem.dataset.remove;
@@ -405,7 +383,6 @@
     }
   }
 
-  // Sync helpers (lightweight; safe no-op if syncUrl not provided)
   async function api(action, payload = {}) {
     if (!state.settings || !state.settings.syncUrl) throw new Error('Add the Apps Script URL first.');
     const r = await fetch(state.settings.syncUrl, {
@@ -428,6 +405,26 @@
     }
   }
 
+  // NAV visibility logic
+  function updateNavDisplay(activePage) {
+    // Hide nav for pages that should be focused (e.g., add)
+    const hideOnPages = ['add'];
+    const bottomNav = q('nav.bottom-nav');
+    const topNav = q('.top-nav');
+
+    // If page is in hideOnPages, hide both navs on small & large screens
+    if (hideOnPages.includes(activePage)) {
+      if (bottomNav) bottomNav.classList.add('hidden');
+      if (topNav) topNav.classList.add('hidden');
+      return;
+    }
+
+    // Otherwise, show appropriate navs based on media query
+    const wide = window.matchMedia && window.matchMedia('(min-width:900px)').matches;
+    if (bottomNav) bottomNav.classList.toggle('hidden', wide);
+    if (topNav) topNav.classList.toggle('hidden', !wide);
+  }
+
   function renderAll() {
     greeting();
     populateCategories();
@@ -435,7 +432,6 @@
     renderTransactions();
     renderLoanSummary();
     updateLoanRepaymentField();
-    // other panels: budgets etc. left as-is
     if ($('month')) $('month').value = currentMonth();
     if ($('txCount')) $('txCount').textContent = `Activity (${(state.transactions||[]).length})`;
     if ($('txCountList')) $('txCountList').textContent = `Transactions (${(state.transactions||[]).length})`;
@@ -444,6 +440,11 @@
   function showPage(id) {
     document.querySelectorAll('.page').forEach(p => p.classList.toggle('active', p.id === id));
     document.querySelectorAll('nav [data-page]').forEach(b => b.classList.toggle('active', b.dataset.page === id));
+    // top-nav also must reflect active state
+    document.querySelectorAll('.top-nav [data-page]').forEach(b => b.classList.toggle('active', b.dataset.page === id));
+    // bottom nav set active
+    document.querySelectorAll('nav.bottom-nav [data-page]').forEach(b => b.classList.toggle('active', b.dataset.page === id));
+    updateNavDisplay(id);
     if (id === 'home') renderAll();
     if (id === 'settings') {
       const inp = $('syncUrlInput'); if (inp) inp.value = state.settings?.syncUrl || '';
@@ -453,7 +454,6 @@
   function applyTheme() {
     document.body.classList.toggle('dark', state.settings?.theme === 'dark');
     $('currentTheme') && ($('currentTheme').textContent = state.settings?.theme || 'light');
-    // update switch text
     const themeBtns = document.querySelectorAll('.theme-toggle');
     themeBtns.forEach(btn => {
       if (btn.tagName === 'BUTTON') btn.textContent = state.settings?.theme === 'dark' ? '☾' : '☼';
@@ -464,7 +464,7 @@
     document.addEventListener('click', handleGlobalClicks);
     document.getElementById('form')?.addEventListener('submit', saveTransactionForm);
     document.querySelectorAll('nav [data-page]').forEach(b => b.addEventListener('click', () => showPage(b.dataset.page)));
-    // theme toggles (any element with class .theme-toggle)
+    document.querySelectorAll('.top-nav [data-page]').forEach(b => b.addEventListener('click', () => showPage(b.dataset.page)));
     document.querySelectorAll('.theme-toggle').forEach(btn => {
       btn.addEventListener('click', () => {
         state.settings = state.settings || {};
@@ -519,6 +519,9 @@
       renderAll();
       toast('Cleared');
     });
+
+    // ensure nav visibility updates on resize
+    window.addEventListener('resize', () => updateNavDisplay(document.querySelector('.page.active')?.id || 'home'));
   }
 
   function init() {
@@ -531,7 +534,6 @@
     wireEvents();
     wireTabsIfNeeded();
     renderAll();
-    // show initial page
     showPage('home');
   }
 
