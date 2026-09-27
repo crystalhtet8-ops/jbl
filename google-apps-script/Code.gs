@@ -1,10 +1,10 @@
 /**
  * MoneyFlow - Google Apps Script backend
- * - Syncs Transactions, Loans, Categories, Budgets, Goals to a Spreadsheet
+ * - Syncs Transactions, Loans (computed), Categories, Budgets, Goals to a Spreadsheet
  * - Endpoints (GET/POST): action = getAll | replaceAll | status
  *
  * To use:
- *  - Set SPREADSHEET_ID to a specific spreadsheet or leave blank to use the active spreadsheet.
+ *  - Set SPREADSHEET_ID to a specific spreadsheet or leave empty to use the active spreadsheet.
  *  - Deploy as Web App (Execute as: Me / Who has access: Anyone with link).
  */
 
@@ -54,27 +54,27 @@ function sheet(name, headers) {
     if (headers && headers.length) sh.getRange(1,1,1,headers.length).setValues([headers]);
     sh.setFrozenRows(1);
   } else {
-    // Ensure headers exist and first row length matches headers
+    // Ensure header row exists and at least headers.length columns
     try {
-      const existing = sh.getRange(1,1,1,sh.getLastColumn()).getValues()[0] || [];
+      const existing = sh.getRange(1,1,1,Math.max(sh.getLastColumn(), headers ? headers.length : 0)).getValues()[0] || [];
       if (!existing || existing.length < (headers ? headers.length : 0)) {
         if (headers && headers.length) sh.getRange(1,1,1,headers.length).setValues([headers]);
         sh.setFrozenRows(1);
       }
-    } catch (e) { /* ignore */ }
+    } catch (e) {
+      // noop
+    }
   }
   return sh;
 }
 
 function readRows(name, headers) {
   const sh = sheet(name, headers);
-  const range = sh.getDataRange();
-  const vals = range.getValues();
+  const vals = sh.getDataRange().getValues();
   if (!vals || vals.length < 2) return [];
   const data = [];
   for (let i = 1; i < vals.length; i++) {
     const row = vals[i];
-    // skip completely blank rows
     if (!row.some(cell => cell !== '' && cell !== null && typeof cell !== 'undefined')) continue;
     const obj = {};
     for (let j = 0; j < headers.length; j++) {
@@ -124,7 +124,6 @@ function normalizeCategory(x) {
   };
 }
 
-/* Merge unique categories (case-insensitive name + type) */
 function uniqueCategories(xs) {
   const out = [];
   xs.forEach(x => {
@@ -136,71 +135,135 @@ function uniqueCategories(xs) {
   return out;
 }
 
+/* ---------- Compute loans from transactions ---------- */
+
+function computeLoansFromTransactions(transactions) {
+  // transactions: array of normalized transaction objects
+  // We'll compute loans by:
+  //  - Any income transaction with loanType === 'loan' or category includes 'loan' is a loan origination (principal increases)
+  //  - Any expense transaction with loanId reduces the corresponding loan.remaining (repayment)
+  //  - If a repayment references a loanId that hasn't been created, create a loan record with principal 0 and subtract repayments (remaining can go negative -> clamp to 0)
+  // Use chronological order by createdAt (or date) so repayments apply in sequence.
+  const txs = (transactions || []).map(t => Object.assign({}, t));
+  txs.sort((a,b) => {
+    const ta = a.createdAt ? new Date(a.createdAt).getTime() : (a.date ? new Date(a.date).getTime() : 0);
+    const tb = b.createdAt ? new Date(b.createdAt).getTime() : (b.date ? new Date(b.date).getTime() : 0);
+    return ta - tb;
+  });
+
+  const loansById = {};
+
+  txs.forEach(tx => {
+    const type = String(tx.type || '').toLowerCase();
+    const category = String(tx.category || '').toLowerCase();
+    const loanId = tx.loanId ? String(tx.loanId) : '';
+
+    const isLoanOrigination = (type === 'income') && (tx.loanType === 'loan' || category.includes('loan'));
+    const isRepayment = (type === 'expense') && !!loanId;
+
+    if (isLoanOrigination) {
+      const id = loanId || `loan-${tx.id || ('t' + Math.abs(new Date(tx.createdAt || tx.date || Date.now()).getTime()))}`;
+      if (!loansById[id]) {
+        loansById[id] = {
+          id,
+          name: tx.note || tx.category || 'Loan',
+          principal: 0,
+          remaining: 0,
+          date: formatDate(tx.date),
+          note: tx.note || '',
+          createdAt: tx.createdAt || (new Date()).toISOString()
+        };
+      }
+      const amt = Number(tx.amount || 0);
+      loansById[id].principal = Number(loansById[id].principal || 0) + amt;
+      loansById[id].remaining = Number(loansById[id].remaining || 0) + amt;
+    }
+
+    if (isRepayment) {
+      const id = loanId;
+      if (!loansById[id]) {
+        // create placeholder loan (principal unknown) so repayment has a target
+        loansById[id] = {
+          id,
+          name: tx.note || tx.category || 'Loan',
+          principal: 0,
+          remaining: 0,
+          date: '',
+          note: '',
+          createdAt: tx.createdAt || (new Date()).toISOString()
+        };
+      }
+      const amt = Number(tx.amount || 0);
+      loansById[id].remaining = Math.max(0, Number(loansById[id].remaining || 0) - amt);
+    }
+  });
+
+  // Convert map to array
+  const loans = Object.keys(loansById).map(k => {
+    const l = loansById[k];
+    // ensure numeric fields
+    return {
+      id: String(l.id || ''),
+      name: String(l.name || ''),
+      principal: Number(l.principal || 0),
+      remaining: Number(l.remaining || 0),
+      date: formatDate(l.date),
+      note: String(l.note || ''),
+      createdAt: l.createdAt ? new Date(l.createdAt).toISOString() : new Date().toISOString()
+    };
+  });
+
+  return loans;
+}
+
 /* ---------- Read / Write all ---------- */
 
 function readAll() {
-  // Transactions
-  const rawTx = readRows('Transactions', TRANSACTION_HEADERS);
-  const transactions = rawTx.map(normalizeTransaction).filter(Boolean);
-
-  // Loans
-  const rawLoans = readRows('Loans', LOAN_HEADERS);
-  const loans = rawLoans.map(normalizeLoan).filter(Boolean);
-
-  // Categories
-  const rawCats = readRows('Categories', CATEGORY_HEADERS);
-  const categories = uniqueCategories(rawCats);
-
-  // Budgets
-  const rawBudgets = readRows('Budgets', BUDGET_HEADERS).map(r => {
-    return { category: String(r.category || ''), amount: Number(r.amount || 0) };
-  });
-
-  // Goals
-  const rawGoals = readRows('Goals', GOAL_HEADERS).map(r => {
-    return { name: String(r.name || ''), target: Number(r.target || 0), saved: Number(r.saved || 0) };
-  });
-
-  const out = { transactions, loans, categories, budgets: rawBudgets, goals: rawGoals };
-  out.revision = fingerprint(out);
-  return out;
+  const transactions = readRows('Transactions', TRANSACTION_HEADERS).map(normalizeTransaction).filter(Boolean);
+  const loans = readRows('Loans', LOAN_HEADERS).map(normalizeLoan).filter(Boolean);
+  const categories = uniqueCategories(readRows('Categories', CATEGORY_HEADERS));
+  const budgets = readRows('Budgets', BUDGET_HEADERS).map(r => ({ category: String(r.category || ''), amount: Number(r.amount || 0) }));
+  const goals = readRows('Goals', GOAL_HEADERS).map(r => ({ name: String(r.name || ''), target: Number(r.target || 0), saved: Number(r.saved || 0) }));
+  const d = { transactions, loans, categories, budgets, goals };
+  d.revision = fingerprint(d);
+  return d;
 }
 
 function writeAll(payload) {
-  // Expect payload to contain transactions, loans, categories, budgets, goals
-  const t = (payload.transactions || []).map(normalizeTransaction).filter(Boolean);
-  const l = (payload.loans || []).map(normalizeLoan).filter(Boolean);
-  const c = uniqueCategories(payload.categories || []);
-  const b = (payload.budgets || []).map(item => [String(item.category || ''), Number(item.amount || 0)]);
-  const g = (payload.goals || []).map(item => [String(item.name || ''), Number(item.target || 0), Number(item.saved || 0)]);
+  // payload may contain transactions, categories, budgets, goals
+  const transactions = (payload.transactions || []).map(normalizeTransaction).filter(Boolean);
+
+  // Compute loans server-side (authoritative)
+  const computedLoans = computeLoansFromTransactions(transactions || []);
+
+  const categories = uniqueCategories(payload.categories || []);
+  const budgets = (payload.budgets || []).map(item => [String(item.category || ''), Number(item.amount || 0)]);
+  const goals = (payload.goals || []).map(item => [String(item.name || ''), Number(item.target || 0), Number(item.saved || 0)]);
 
   // Write Transactions
-  writeTable('Transactions', TRANSACTION_HEADERS, t.map(tx => [
+  writeTable('Transactions', TRANSACTION_HEADERS, transactions.map(tx => [
     tx.id, tx.type, tx.amount, tx.date, tx.category, tx.note, tx.loanId, tx.loanType, tx.createdAt
   ]));
 
-  // Write Loans
-  writeTable('Loans', LOAN_HEADERS, l.map(ln => [
+  // Write Loans (computed)
+  writeTable('Loans', LOAN_HEADERS, computedLoans.map(ln => [
     ln.id, ln.name, ln.principal, ln.remaining, ln.date, ln.note, ln.createdAt
   ]));
 
   // Write Categories
-  writeTable('Categories', CATEGORY_HEADERS, c.map(cat => [cat.name, cat.type, cat.createdAt]));
+  writeTable('Categories', CATEGORY_HEADERS, categories.map(c => [c.name, c.type, c.createdAt]));
 
   // Write Budgets
-  writeTable('Budgets', BUDGET_HEADERS, b);
+  writeTable('Budgets', BUDGET_HEADERS, budgets);
 
   // Write Goals
-  writeTable('Goals', GOAL_HEADERS, g);
+  writeTable('Goals', GOAL_HEADERS, goals);
 }
 
 function writeTable(name, headers, rows) {
   const sh = sheet(name, headers);
-  // clear content but keep formatting
   sh.clearContents();
-  // set header row
   if (headers && headers.length) sh.getRange(1,1,1,headers.length).setValues([headers]);
-  // set rows
   if (rows && rows.length) {
     sh.getRange(2,1,rows.length, headers.length).setValues(rows);
   }
@@ -237,9 +300,7 @@ function doPost(e) {
     if (action === 'replaceAll' || action === 'writeAll') {
       // payload.payload or payload.body or payload itself may contain the data
       const data = payload.payload || payload.body || payload;
-      // Accept both {action:'replaceAll', payload:{...}} and {action:'replaceAll', transactions:[], ...}
-      const toWrite = data.payload || data; // if nested
-      writeAll(toWrite);
+      writeAll(data);
       return out({ ok: true, message: 'Replaced data' });
     }
     return out({ ok: false, error: 'unknown action' });
