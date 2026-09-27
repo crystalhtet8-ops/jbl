@@ -1,91 +1,12 @@
-/* Non-invasive polish (quick-action pills, header stat spacing, loan BI, responsive tweaks)
-   This file intentionally overrides minimally and should be loaded after css/app.css.
-*/
-
-/* Quick-action pill tuning: rounded, softer elevation, subtle hover/active */
-.actions button,
-.action-buttons button,
-.quick-actions button {
-  border-radius: 18px; /* rounder pill */
+/* css/ui-polish.css - small visual polish */
+.quick-actions button,
+.action-buttons button {
+  border-radius: 18px;
   padding: 10px 14px;
-  box-shadow: 0 8px 20px rgba(16,24,40,0.06);
-  background: linear-gradient(180deg, rgba(255,255,255,0.015), rgba(0,0,0,0.02));
-  border: 1px solid rgba(0,0,0,0.06);
-  transition: transform .12s ease, box-shadow .12s ease, background .12s ease;
+  box-shadow: 0 8px 20px rgba(16,24,40,0.04);
+  transition: transform .12s ease, box-shadow .12s ease;
 }
-
-.actions button:hover,
-.action-buttons button:hover,
-.quick-actions button:hover {
-  transform: translateY(-1px); /* subtle lift */
-  box-shadow: 0 10px 26px rgba(16,24,40,0.08);
-}
-
-.actions button:active,
-.action-buttons button:active,
-.quick-actions button:active {
-  transform: translateY(0);
-  box-shadow: 0 6px 16px rgba(16,24,40,0.06);
-}
-
-/* Compact and aligned quick actions */
-.quick-actions {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-  justify-content: flex-start;
-  flex-wrap: wrap;
-}
-
-.quick-actions button {
-  min-width: 46px;
-  height: 46px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-}
-
-/* Small label under icons */
-.quick-actions .label {
-  display: block;
-  text-align: center;
-  font-size: 11px;
-  margin-top: 4px;
-}
-
-/* Header stats layout */
-.header-stats {
-  display:flex;
-  gap:12px;
-  align-items:center;
-  flex-wrap:wrap;
-}
-
-.header-stat {
-  min-width:0;
-  padding:8px 12px;
-  border-radius:10px;
-  background:var(--card);
-  border:1px solid var(--line);
-  text-align:center;
-}
-
-/* responsive */
-@media (max-width:700px){
-  .header-stats{flex-wrap:wrap}
-  .quick-actions{justify-content:center}
-}
-
-/* dark-mode subtle variants */
-body.dark .actions button,
-body.dark .action-buttons button,
-body.dark .quick-actions button {
-  background: linear-gradient(180deg, rgba(255,255,255,0.01), rgba(255,255,255,0.01));
-  box-shadow: 0 8px 22px rgba(0,0,0,0.22);
-  border-color: rgba(255,255,255,0.06);
-}
-
-/* Accessible reduced motion */
-@media (prefers-reduced-motion:reduce){
-  *,*::before,*::after{transition:none!important;animation:none!important}
-}
+.quick-actions button:hover { transform: translateY(-1px); box-shadow: 0 10px 26px rgba(16,24,40,0.06); }
+.quick-actions .label { font-size: 11px; margin-top: 4px; display:block; text-align:center; }
+.header-stat { text-align:center; }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
