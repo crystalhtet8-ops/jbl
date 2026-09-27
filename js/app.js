@@ -417,22 +417,34 @@
     return r.json();
   }
 
-  async function queueSync() {
-    if (!state.settings || !state.settings.syncUrl) return;
-    try {
-      const payload = {
-        transactions: state.transactions || [],
-        categories: state.categories || [],
-        budgets: state.budgets || [],
-        goals: state.goals || []
-      };
-      await api('replaceAll', payload);
-      toast('Pushed changes to sheet');
-    } catch (e) {
-      console.warn('sync failed', e);
-      toast('Push failed');
+async function queueSync() {
+  if (!state.settings || !state.settings.syncUrl) return;
+  try {
+    const payload = {
+      transactions: state.transactions || [],
+      // include client categories/budgets/goals so server persists them; server will compute loans authoritatively
+      categories: state.categories || [],
+      budgets: state.budgets || [],
+      goals: state.goals || []
+    };
+    const res = await api('replaceAll', payload);
+    // server will respond with { ok:true, message:'Replaced data', data: { transactions, loans, categories, budgets, goals, revision } }
+    if (res && res.data) {
+      // update client state using authoritative server data
+      state.transactions = res.data.transactions || state.transactions || [];
+      state.loans = res.data.loans || state.loans || [];
+      state.categories = res.data.categories || state.categories || [];
+      state.budgets = res.data.budgets || state.budgets || [];
+      state.goals = res.data.goals || state.goals || [];
+      saveState();
+      renderAll();
     }
+    toast('Pushed changes to sheet');
+  } catch (e) {
+    console.warn('sync failed', e);
+    toast('Push failed');
   }
+}
 
   // --- form submit and tab logic (keeps existing behavior) ---
   async function saveTransactionForm(e) {
