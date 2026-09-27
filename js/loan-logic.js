@@ -5,7 +5,20 @@
   const q = sel => document.querySelector(sel);
   const money = value => `${Math.round(Number(value) || 0).toLocaleString()} MMK`;
   const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-  const read = () => { try { const s = JSON.parse(localStorage.getItem(KEY) || '{}'); s.transactions = Array.isArray(s.transactions) ? s.transactions : []; s.loans = Array.isArray(s.loans) ? s.loans : []; s.reportMonth = s.reportMonth || new Date().toISOString().slice(0,7); s.settings = s.settings || {}; return s; } catch (_) { return {transactions:[],loans:[],reportMonth:new Date().toISOString().slice(0,7),settings:{}}; } };
+
+  const read = () => {
+    try {
+      const s = JSON.parse(localStorage.getItem(KEY) || 'null') || {};
+      s.transactions = Array.isArray(s.transactions) ? s.transactions : [];
+      s.loans = Array.isArray(s.loans) ? s.loans : [];
+      s.categories = Array.isArray(s.categories) ? s.categories : [];
+      s.budgets = Array.isArray(s.budgets) ? s.budgets : [];
+      s.reportMonth = s.reportMonth || new Date().toISOString().slice(0,7);
+      return s;
+    } catch (e) {
+      return { transactions: [], loans: [], categories: [], budgets: [], reportMonth: new Date().toISOString().slice(0,7) };
+    }
+  };
   const save = state => { try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (_) {} };
 
   function repairLoanRecords() {
@@ -89,7 +102,7 @@
 
   function renderLoanSummary() {
     const state = read();
-    const month = state.reportMonth;
+    const month = state.reportMonth || new Date().toISOString().slice(0,7);
     const rows = (state.transactions || []).filter(tx => String(tx.date || '').slice(0, 7) === month);
     const payback = rows.filter(tx => tx.type === 'expense' && tx.loanId).reduce((sum, tx) => sum + (Number(tx.amount) || 0), 0);
     const received = rows.filter(tx => tx.type === 'income' && tx.loanId).reduce((sum, tx) => sum + (Number(tx.amount) || 0), 0);
@@ -104,7 +117,10 @@
       if (biArea) biArea.appendChild(container);
       host = container;
     }
-    host.innerHTML = `<div class="loan-bi-grid"><div class="loan-bi-stat"><small>Loan received</small><strong>${money(received)}</strong></div><div class="loan-bi-stat"><small>Loan payback</small><strong>${money(payback)}</strong></div><div class="loan-bi-stat"><small>Outstanding liability</small><strong>${money(outstanding)}</strong></div></div><div class="loan-bi-list">${(state.loans && state.loans.length) ? state.loans.map(loan => `<div class="loan-bi-row"><span>${esc(loan.name || 'Loan')}<small>Principal: ${money(loan.principal)}</small></span><b>${money(loan.remaining)}</b></div>`).join('') : '<div class="empty">No loan records yet</div>'}</div>`;
+    const loanRows = (state.loans || []).map(loan => {
+      return `<div class="loan-bi-row"><span>${esc(loan.name||'Loan')}<small>Principal: ${money(loan.principal)}</small></span><b>${money(loan.remaining)}</b></div>`;
+    }).join('') || `<div class="empty muted">No loan records yet</div>`;
+    host.innerHTML = `<div class="loan-bi-grid"><div class="loan-bi-stat"><small>Loan received</small><strong>${money(received)}</strong></div><div class="loan-bi-stat"><small>Loan payback</small><strong>${money(payback)}</strong></div><div class="loan-bi-stat"><small>Outstanding liability</small><strong>${money(outstanding)}</strong></div></div><div class="loan-bi-list">${loanRows}</div>`;
   }
 
   function ensureRepaymentDropdown() {
