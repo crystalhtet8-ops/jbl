@@ -138,12 +138,6 @@ function uniqueCategories(xs) {
 /* ---------- Compute loans from transactions ---------- */
 
 function computeLoansFromTransactions(transactions) {
-  // transactions: array of normalized transaction objects
-  // We'll compute loans by:
-  //  - Any income transaction with loanType === 'loan' or category includes 'loan' is a loan origination (principal increases)
-  //  - Any expense transaction with loanId reduces the corresponding loan.remaining (repayment)
-  //  - If a repayment references a loanId that hasn't been created, create a loan record with principal 0 and subtract repayments (remaining can go negative -> clamp to 0)
-  // Use chronological order by createdAt (or date) so repayments apply in sequence.
   const txs = (transactions || []).map(t => Object.assign({}, t));
   txs.sort((a,b) => {
     const ta = a.createdAt ? new Date(a.createdAt).getTime() : (a.date ? new Date(a.date).getTime() : 0);
@@ -182,7 +176,6 @@ function computeLoansFromTransactions(transactions) {
     if (isRepayment) {
       const id = loanId;
       if (!loansById[id]) {
-        // create placeholder loan (principal unknown) so repayment has a target
         loansById[id] = {
           id,
           name: tx.note || tx.category || 'Loan',
@@ -198,10 +191,8 @@ function computeLoansFromTransactions(transactions) {
     }
   });
 
-  // Convert map to array
   const loans = Object.keys(loansById).map(k => {
     const l = loansById[k];
-    // ensure numeric fields
     return {
       id: String(l.id || ''),
       name: String(l.name || ''),
@@ -230,7 +221,6 @@ function readAll() {
 }
 
 function writeAll(payload) {
-  // payload may contain transactions, categories, budgets, goals
   const transactions = (payload.transactions || []).map(normalizeTransaction).filter(Boolean);
 
   // Compute loans server-side (authoritative)
@@ -240,7 +230,6 @@ function writeAll(payload) {
   const budgets = (payload.budgets || []).map(item => [String(item.category || ''), Number(item.amount || 0)]);
   const goals = (payload.goals || []).map(item => [String(item.name || ''), Number(item.target || 0), Number(item.saved || 0)]);
 
-  // Write Transactions
   writeTable('Transactions', TRANSACTION_HEADERS, transactions.map(tx => [
     tx.id, tx.type, tx.amount, tx.date, tx.category, tx.note, tx.loanId, tx.loanType, tx.createdAt
   ]));
@@ -301,7 +290,9 @@ function doPost(e) {
       // payload.payload or payload.body or payload itself may contain the data
       const data = payload.payload || payload.body || payload;
       writeAll(data);
-      return out({ ok: true, message: 'Replaced data' });
+      // Return the authoritative dataset (transactions, computed loans, categories, budgets, goals)
+      const result = readAll();
+      return out({ ok: true, message: 'Replaced data', data: result });
     }
     return out({ ok: false, error: 'unknown action' });
   } catch (err) {
