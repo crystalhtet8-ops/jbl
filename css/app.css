@@ -30,9 +30,9 @@ body{margin:0;background:var(--bg);color:var(--text);font-family:system-ui,-appl
 .muted{color:var(--muted)}
 
 /* Header & nav */
-header{display:flex;align-items:center;gap:14px;padding:12px 18px;background:var(--card);border-bottom:1px solid var(--line);position:sticky;top:0;z-index:5}
+header{display:flex;align-items:center;gap:14px;padding:12px 18px;background:var(--card);border-bottom:1px solid var(--line);position:sticky;top:0;z-index:9999}
 .logo img{width:40px;height:40px;border-radius:8px}
-nav{display:flex;gap:8px;margin-left:auto}
+nav{display:flex;gap:8px;margin-left:auto;z-index:9999}
 nav button{background:transparent;border:1px solid transparent;padding:8px 10px;border-radius:10px;cursor:pointer}
 nav button.active{background:var(--soft);border-color:var(--line)}
 
