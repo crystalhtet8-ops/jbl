@@ -26,9 +26,9 @@
       <div style="display:flex;align-items:center;gap:12px">
         <div id="greet" class="muted">GOOD DAY</div>
 
-        <!-- Theme toggles (app.js wires #switch and #theme) -->
-        <button id="theme" title="Toggle theme">☾</button>
-        <button id="switch" title="Toggle theme">☼</button>
+        <!-- Theme toggles (app.js wires .theme-toggle) -->
+        <button id="theme" class="theme-toggle" title="Toggle theme">☾</button>
+        <button id="themeToggleBtn" class="theme-toggle" title="Toggle theme">☼</button>
       </div>
     </header>
 
@@ -76,7 +76,7 @@
               <div class="table">
                 <table>
                   <thead><tr><th>Date</th><th>Category / Note</th><th>Amount</th><th></th></tr></thead>
-                  <tbody id="rows"></tbody>
+                  <tbody id="recentRows"></tbody>
                 </table>
               </div>
             </div>
@@ -198,7 +198,7 @@
         <div class="panel" style="margin-top:12px;">
           <table>
             <thead><tr><th>Date</th><th>Activity</th><th>Amount</th><th></th></tr></thead>
-            <tbody id="rows"></tbody>
+            <tbody id="txRows"></tbody>
           </table>
         </div>
       </section>
@@ -213,7 +213,7 @@
         <div class="panel" style="margin-top:12px;">
           <h3>Theme</h3>
           <div style="display:flex;gap:10px;align-items:center;">
-            <button id="switch" class="switch"><i></i></button>
+            <button id="themeToggleSetting" class="theme-toggle switch"><i></i></button>
             <small class="muted">Current: <span id="currentTheme">light</span></small>
           </div>
         </div>
