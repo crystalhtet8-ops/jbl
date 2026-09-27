@@ -84,13 +84,27 @@ header {
 
 /* navigation */
 nav.top-nav { display: none; gap: 8px; align-items: center; }
+nav.top-nav button, nav.bottom-nav button {
+  background: var(--card);
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 8px 10px;
+}
+nav.top-nav button.active, nav.bottom-nav button.active {
+  background: var(--accent);
+  color: #fff;
+  border-color: transparent;
+  box-shadow: 0 8px 20px var(--accent-soft);
+}
+
 nav.bottom-nav {
   position: fixed; left: 12px; right: 12px; bottom: 12px; display: flex;
   align-items: center; justify-content: space-between; gap: 8px; padding: 10px; z-index: 40;
   background: rgba(255,255,255,0.75); border-radius: 14px; border: 1px solid var(--line); backdrop-filter: blur(10px);
 }
 body.dark nav.bottom-nav { background: rgba(15, 23, 42, 0.72); }
-nav.bottom-nav button, nav.top-nav button { flex: 1; min-height: 42px; padding: 8px 10px; border-radius: 10px; border: 1px solid var(--line); background: var(--card); }
+nav.bottom-nav button, nav.top-nav button { flex: 1; min-height: 42px; }
 nav.bottom-nav button.add, nav.top-nav button.add { flex: 0 0 60px; max-width: 60px; }
 
 /* theme toggle */
@@ -111,6 +125,13 @@ label { display:block; margin-bottom:6px; font-weight:600; }
 .table th, .table td { text-align: left; padding: 10px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
 
 button.primary { background: var(--accent); color: #fff; border: none; padding: 10px 12px; border-radius: 10px; box-shadow: 0 8px 18px var(--accent-soft); }
+
+/* Settings lists (categories & budgets) */
+.settings-list { margin-top: 8px; display:block; }
+.settings-list .row { display:flex; align-items:center; justify-content:space-between; gap:8px; padding:8px; border-radius:8px; border:1px solid var(--line); background:var(--card); margin-bottom:6px; }
+.settings-list .meta { display:flex; gap:12px; align-items:center; }
+.settings-list .small-muted { color:var(--muted); font-size:0.9rem; }
+.settings-list button.small { font-size:0.85rem; padding:6px 8px; border-radius:8px; }
 
 /* small screens */
 @media (max-width: 640px) {
