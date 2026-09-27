@@ -188,12 +188,36 @@
   }
 
   function renderTransactions() {
-    const host = $('txList') || $('rows');
-    if (!host) return;
     const xs = (state.transactions || []).slice().reverse();
-    if (!xs.length) { host.innerHTML = `<div class="muted">No transactions</div>`; return; }
-    if (host.tagName === 'TBODY') {
-      host.innerHTML = xs.map((tx, idx) => {
+    // recent panel (simple card list) - element #recent (div) and #recentRows (tbody)
+    const recentDiv = $('recent');
+    const recentTbody = $('recentRows');
+    const txTbody = $('txRows');
+
+    if (!xs.length) {
+      if (recentDiv) recentDiv.innerHTML = `<div class="muted">No transactions</div>`;
+      if (recentTbody) recentTbody.innerHTML = `<tr><td colspan="4" class="muted">No transactions</td></tr>`;
+      if (txTbody) txTbody.innerHTML = `<tr><td colspan="4" class="muted">No transactions</td></tr>`;
+      return;
+    }
+
+    // Render compact cards into recentDiv
+    if (recentDiv) {
+      recentDiv.innerHTML = xs.slice(0,5).map(tx => {
+        const right = tx.type === 'income' ? `<b style="color:green">${money(tx.amount)}</b>` : `<b>${money(tx.amount)}</b>`;
+        return `<div class="row" style="display:flex;gap:8px;align-items:center;justify-content:space-between;padding:8px;border-radius:10px;border:1px solid var(--line);background:var(--card);margin-bottom:6px">
+                  <div>
+                    <div style="font-weight:700">${esc(tx.category || tx.note || tx.type)}</div>
+                    <small class="muted">${esc(tx.note || '')} ${tx.loanId ? ' • ' + esc(tx.loanId) : ''}</small>
+                  </div>
+                  <div>${right}</div>
+                </div>`;
+      }).join('');
+    }
+
+    // Render recentRows (table)
+    if (recentTbody) {
+      recentTbody.innerHTML = xs.slice(0,8).map(tx => {
         const right = tx.type === 'income' ? `<b style="color:green">${money(tx.amount)}</b>` : `<b>${money(tx.amount)}</b>`;
         return `<tr>
           <td>${esc(tx.date || '')}</td>
@@ -202,16 +226,18 @@
           <td><button data-remove="${tx.id}">Delete</button></td>
         </tr>`;
       }).join('');
-    } else {
-      host.innerHTML = xs.map(tx => {
+    }
+
+    // Render full transactions table (txRows)
+    if (txTbody) {
+      txTbody.innerHTML = xs.map(tx => {
         const right = tx.type === 'income' ? `<b style="color:green">${money(tx.amount)}</b>` : `<b>${money(tx.amount)}</b>`;
-        return `<div class="row" style="display:flex;gap:8px;align-items:center;justify-content:space-between;padding:8px;border-radius:10px;border:1px solid var(--line);background:var(--card)">
-                  <div>
-                    <div style="font-weight:700">${esc(tx.category || tx.note || tx.type)}</div>
-                    <small class="muted">${esc(tx.note || '')} ${tx.loanId ? ' • ' + esc(tx.loanId) : ''}</small>
-                  </div>
-                  <div>${right}</div>
-                </div>`;
+        return `<tr>
+          <td>${esc(tx.date || '')}</td>
+          <td><div style="font-weight:700">${esc(tx.category || tx.note || tx.type)}</div><small class="muted">${esc(tx.note || '')} ${tx.loanId ? ' • ' + esc(tx.loanId) : ''}</small></td>
+          <td>${right}</td>
+          <td><button data-remove="${tx.id}">Delete</button></td>
+        </tr>`;
       }).join('');
     }
   }
@@ -222,13 +248,15 @@
     if ($('greet')) $('greet').textContent = `GOOD ${part.toUpperCase()}`;
   }
 
-  function currentMonth() { return state.reportMonth || today.slice(0,7); }
-
   function renderHeaderStats() {
     const xs = (state.transactions || []).filter(t => String(t.date || '').slice(0,7) === currentMonth());
     const t = totals(xs);
     const remainingMoney = (t.income || 0) - (t.expense || 0) - (t.loan || 0) - (t.credit || 0);
-    const daily = Math.max(0, Math.floor(remainingMoney / Math.max(1, (new Date(new Date().getFullYear(), new Date().getMonth()+1, 0)).getDate() - new Date().getDate() + 1)));
+    const [y, m] = (currentMonth()).split('-').map(n => Number(n));
+    const daysInMonth = new Date(y, m, 0).getDate();
+    const todayDate = new Date();
+    const daysLeft = Math.max(1, daysInMonth - todayDate.getDate() + 1);
+    const daily = Math.max(0, Math.floor(remainingMoney / daysLeft));
     const map = [
       ['income', t.income],
       ['expense', t.expense],
@@ -410,19 +438,7 @@
     // other panels: budgets etc. left as-is
     if ($('month')) $('month').value = currentMonth();
     if ($('txCount')) $('txCount').textContent = `Activity (${(state.transactions||[]).length})`;
-  }
-
-  function renderHeaderStats() {
-    const xs = (state.transactions || []).filter(t => String(t.date || '').slice(0,7) === currentMonth());
-    const t = totals(xs);
-    const remaining = (t.income || 0) - (t.expense || 0) - (t.loan || 0) - (t.credit || 0);
-    [['income', t.income], ['expense', t.expense], ['loan', t.loan], ['daily', Math.max(0, Math.floor(remaining / Math.max(1, (new Date(new Date().getFullYear(), new Date().getMonth()+1, 0)).getDate() - new Date().getDate() + 1)))) , ['remaining', remaining]].forEach(([id, val])=>{
-      const el = $(id);
-      if (!el) return;
-      const strong = el.querySelector('strong');
-      if (strong) strong.textContent = money(val);
-      else el.textContent = money(val);
-    });
+    if ($('txCountList')) $('txCountList').textContent = `Transactions (${(state.transactions||[]).length})`;
   }
 
   function showPage(id) {
@@ -438,7 +454,7 @@
     document.body.classList.toggle('dark', state.settings?.theme === 'dark');
     $('currentTheme') && ($('currentTheme').textContent = state.settings?.theme || 'light');
     // update switch text
-    const themeBtns = document.querySelectorAll('#switch, #theme');
+    const themeBtns = document.querySelectorAll('.theme-toggle');
     themeBtns.forEach(btn => {
       if (btn.tagName === 'BUTTON') btn.textContent = state.settings?.theme === 'dark' ? '☾' : '☼';
     });
@@ -448,14 +464,14 @@
     document.addEventListener('click', handleGlobalClicks);
     document.getElementById('form')?.addEventListener('submit', saveTransactionForm);
     document.querySelectorAll('nav [data-page]').forEach(b => b.addEventListener('click', () => showPage(b.dataset.page)));
-    document.querySelectorAll('.tabs [data-type]').forEach(b => b.addEventListener('click', () => {
-      // handled by wireTabsIfNeeded already
-    }));
-    document.getElementById('switch')?.addEventListener('click', () => {
-      state.settings = state.settings || {};
-      state.settings.theme = state.settings.theme === 'dark' ? 'light' : 'dark';
-      saveState();
-      applyTheme();
+    // theme toggles (any element with class .theme-toggle)
+    document.querySelectorAll('.theme-toggle').forEach(btn => {
+      btn.addEventListener('click', () => {
+        state.settings = state.settings || {};
+        state.settings.theme = state.settings.theme === 'dark' ? 'light' : 'dark';
+        saveState();
+        applyTheme();
+      });
     });
     document.getElementById('saveSyncUrl')?.addEventListener('click', () => {
       const url = ($('syncUrlInput')?.value || '').trim();
