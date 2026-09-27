@@ -24,6 +24,7 @@
 
         <!-- theme toggles - class based so multiple toggles work -->
         <button class="theme-toggle" aria-label="Toggle theme">☾</button>
+
         <nav class="top-nav" aria-label="Primary navigation">
           <button data-page="home">Home</button>
           <button data-page="dashboard">Dashboard</button>
@@ -214,6 +215,7 @@
           <div><button data-page="home">Back</button></div>
         </div>
 
+        <!-- Theme -->
         <div class="panel" style="margin-top:12px;">
           <h3>Theme</h3>
           <div style="display:flex;gap:10px;align-items:center;">
@@ -222,14 +224,12 @@
           </div>
         </div>
 
+        <!-- Categories management -->
         <div class="panel" style="margin-top:12px;">
           <h3>Categories</h3>
           <div id="categoriesList" class="muted">Manage categories in-app</div>
-        </div>
 
-        <div class="panel" style="margin-top:12px;">
-          <h3>Add category</h3>
-          <div class="two" style="margin-bottom:10px;">
+          <div style="margin-top:10px" class="two">
             <input id="newCategoryName" placeholder="Name" />
             <select id="newCategoryType">
               <option value="expense">Expense</option>
@@ -238,9 +238,29 @@
               <option value="credit">Repayment</option>
             </select>
           </div>
-          <button id="addCategory" class="primary">Add</button>
+          <div style="display:flex;gap:8px;margin-top:8px;">
+            <button id="addCategory" class="primary">Add category</button>
+            <button id="resetDefaultCategories">Reset defaults</button>
+          </div>
         </div>
 
+        <!-- Budgets management -->
+        <div class="panel" style="margin-top:12px;">
+          <h3>Budgets</h3>
+
+          <div id="budgetsList" class="muted">Manage monthly budgets</div>
+
+          <div style="margin-top:10px" class="two">
+            <select id="budgetCategorySelect"></select>
+            <input id="newBudgetAmount" placeholder="Amount (MMK)" type="number" min="0" />
+          </div>
+          <div style="display:flex;gap:8px;margin-top:8px;">
+            <button id="addBudget" class="primary">Add budget</button>
+            <button id="clearBudgets">Clear budgets</button>
+          </div>
+        </div>
+
+        <!-- Google Sheets sync -->
         <div class="panel" style="margin-top:12px;">
           <h3>Google Sheets sync</h3>
           <input id="syncUrlInput" type="url" placeholder="https://script.google.com/..." />
@@ -269,7 +289,6 @@
   <script src="js/app.js" defer></script>
   <script src="js/loan-logic.js" defer></script>
   <script>
-    // install service worker if supported
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.register('sw.js').catch(()=>{});
     }
